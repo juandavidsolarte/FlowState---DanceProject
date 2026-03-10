@@ -1,0 +1,45 @@
+# =============================================================================
+# PROYECTO FLOWSTATE - GITIGNORE GLOBAL
+# =============================================================================
+
+# --- BACKEND (Django) ---
+backend/venv/
+backend/.env
+backend/db.sqlite3
+backend/db.sqlite3-journal
+backend/__pycache__/
+backend/staticfiles/
+backend/media/
+backend/*.log
+backend/*.py[cod]
+backend/*$py.class
+
+# --- FRONTEND (React/Vite/Etc) ---
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# --- VARIABLES DE ENTORNO (Seguridad) ---
+.env
+.env.local
+.env.production
+*.env
+
+# --- IDEs & EDITORES ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# --- SISTEMA OPERATIVO ---
+thumbs.db
+desktop.ini
+
+# --- DOCKER ---
+.docker/
