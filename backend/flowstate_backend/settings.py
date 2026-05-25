@@ -23,11 +23,11 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
-    # Terceros (debes instalarlos)
+    # Terceros - DRF, CORS, etc.
     'rest_framework',
     'corsheaders',
 
-    # Tus apps
+    # Mis apps
     'apps.users',
     'apps.customers',
     'apps.catalog',
@@ -151,3 +151,9 @@ CORS_ALLOW_CREDENTIALS = True
 
 # Custom User Model
 AUTH_USER_MODEL = 'users.User'
+
+# Authentication backends: allow login by email
+AUTHENTICATION_BACKENDS = [
+    'apps.users.backends.EmailBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
