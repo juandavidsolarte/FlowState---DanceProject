@@ -42,3 +42,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     @property
     def full_name(self):
         return f"{self.first_name} {self.last_name}"
+
+    @property
+    def is_director(self):
+        return self.role == self.Role.DIRECTOR
+
+    @property
+    def is_profesor(self):
+        return self.role == self.Role.PROFESOR
