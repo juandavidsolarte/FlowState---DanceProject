@@ -28,7 +28,16 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['email', 'password', 'first_name', 'last_name', 'phone']
+        fields = ['email', 'password', 'first_name', 'last_name', 'phone', 'role']
+        extra_kwargs = {
+            'first_name': {'required': True, 'allow_blank': False},
+            'last_name': {'required': True, 'allow_blank': False},
+        }
+
+    def validate_role(self, value):
+        if value not in [User.Role.CLIENTE, User.Role.PROFESOR]:
+            raise serializers.ValidationError("El registro solo está permitido para clientes y profesores.")
+        return value
 
     def create(self, validated_data):
         user = User.objects.create_user(
@@ -37,6 +46,7 @@ class RegisterSerializer(serializers.ModelSerializer):
             first_name=validated_data.get('first_name', ''),
             last_name=validated_data.get('last_name', ''),
             phone=validated_data.get('phone', ''),
-            role=User.Role.CLIENTE,
+            role=validated_data.get('role', User.Role.CLIENTE),
         )
         return user
+
