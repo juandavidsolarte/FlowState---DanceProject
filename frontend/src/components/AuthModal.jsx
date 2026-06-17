@@ -1,21 +1,12 @@
-import React, { Fragment, useRef, useState } from "react";
+import React, { Fragment, useRef } from "react";
 import { Dialog, Transition } from "@headlessui/react";
+import { Link } from "react-router-dom";
 
 const AuthModal = ({ isOpen, closeModal }) => {
   const emailRef = useRef(null);
-  const [mode, setMode] = useState("login"); // 'login' or 'register'
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const form = new FormData(e.target);
-    const data = {
-      mode,
-      email: form.get("email"),
-      password: form.get("password"),
-      remember: form.get("remember") === "on",
-    };
-    console.log("Auth submit", data);
-    // TODO: connect to API depending on mode
     closeModal();
   };
 
@@ -36,7 +27,7 @@ const AuthModal = ({ isOpen, closeModal }) => {
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <div className="fixed inset-0 bg-black/60" aria-hidden="true" />
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px]" aria-hidden="true" />
         </Transition.Child>
 
         <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -50,30 +41,28 @@ const AuthModal = ({ isOpen, closeModal }) => {
               leaveFrom="opacity-100 translate-y-0 scale-100"
               leaveTo="opacity-0 translate-y-6 scale-95"
             >
-              <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-3xl bg-gradient-to-b from-white/100 via-white/95 to-white/95 p-6 text-left align-middle shadow-2xl transition-all backdrop-blur-sm relative">
+              <Dialog.Panel className="relative w-full max-w-md transform overflow-hidden rounded-3xl border border-border bg-gradient-to-b from-card via-card to-background p-6 text-left align-middle shadow-2xl transition-all backdrop-blur-xl">
                 {/* Close X */}
                 <button
                   onClick={closeModal}
                   aria-label="Cerrar"
-                  className="absolute top-4 right-4 text-gray-600 hover:text-gray-900"
+                  className="absolute right-4 top-4 text-muted-foreground transition-colors hover:text-foreground"
                 >
                   ✕
                 </button>
 
                 <div className="text-center mb-4">
-                  <h3 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-fuchsia-500">
-                    {mode === "login" ? "Bienvenido" : "Crear Cuenta"}
+                  <h3 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-fuchsia-500 dark:from-fuchsia-300 dark:to-purple-300">
+                    Bienvenido
                   </h3>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {mode === "login"
-                      ? "Inicia sesión para continuar"
-                      : "Únete a nuestra comunidad de bailarines"}
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Inicia sesión para continuar
                   </p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-800 mb-2">
+                    <label className="mb-2 block text-sm font-medium text-foreground">
                       Correo Electrónico
                     </label>
                     <input
@@ -82,12 +71,12 @@ const AuthModal = ({ isOpen, closeModal }) => {
                       type="email"
                       placeholder="tu@email.com"
                       required
-                      className="w-full rounded-xl px-4 py-3 bg-white/60 border border-gray-200 placeholder-gray-400 focus:outline-none"
+                      className="w-full rounded-xl border border-input bg-background/80 px-4 py-3 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/60"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-800 mb-2">
+                    <label className="mb-2 block text-sm font-medium text-foreground">
                       Contraseña
                     </label>
                     <input
@@ -95,7 +84,7 @@ const AuthModal = ({ isOpen, closeModal }) => {
                       type="password"
                       placeholder="********"
                       required
-                      className="w-full rounded-xl px-4 py-3 bg-white/60 border border-gray-200 placeholder-gray-400 focus:outline-none"
+                      className="w-full rounded-xl border border-input bg-background/80 px-4 py-3 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/60"
                     />
                   </div>
 
@@ -104,9 +93,9 @@ const AuthModal = ({ isOpen, closeModal }) => {
                       <input
                         type="checkbox"
                         name="remember"
-                        className="w-4 h-4"
+                        className="h-4 w-4 rounded border-border text-primary focus:ring-ring"
                       />
-                      <span className="text-sm text-gray-700">Recordarme</span>
+                      <span className="text-sm text-foreground">Recordarme</span>
                     </label>
                     <a
                       href="#"
@@ -119,7 +108,7 @@ const AuthModal = ({ isOpen, closeModal }) => {
                   <div>
                     <button
                       type="submit"
-                      className="w-full py-3 rounded-2xl text-white font-bold bg-gradient-to-r from-purple-500 to-fuchsia-500 shadow-md"
+                      className="w-full rounded-2xl bg-gradient-to-r from-purple-500 to-fuchsia-500 py-3 font-bold text-white shadow-md"
                     >
                       Acceder
                     </button>
@@ -127,48 +116,33 @@ const AuthModal = ({ isOpen, closeModal }) => {
                 </form>
 
                 <div className="my-4 flex items-center">
-                  <div className="flex-1 h-px bg-gray-200" />
-                  <div className="px-3 text-xs text-gray-500">
+                  <div className="h-px flex-1 bg-border" />
+                  <div className="px-3 text-xs text-muted-foreground">
                     O CONTINÚA CON
                   </div>
-                  <div className="flex-1 h-px bg-gray-200" />
+                  <div className="h-px flex-1 bg-border" />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <button className="flex items-center justify-center gap-2 py-2 rounded-xl border border-gray-200 bg-white">
+                  <button className="flex items-center justify-center gap-2 rounded-xl border border-border bg-background py-2 text-foreground transition-colors hover:bg-muted">
                     <span className="text-lg font-bold">G</span>
                     <span className="text-sm">Google</span>
                   </button>
-                  <button className="flex items-center justify-center gap-2 py-2 rounded-xl border border-gray-200 bg-white">
+                  <button className="flex items-center justify-center gap-2 rounded-xl border border-border bg-background py-2 text-foreground transition-colors hover:bg-muted">
                     <span className="text-lg font-bold">f</span>
                     <span className="text-sm">Facebook</span>
                   </button>
                 </div>
 
-                <div className="mt-4 text-center text-sm text-gray-600">
-                  {mode === "login" ? (
-                    <>
-                      ¿No tienes cuenta?{" "}
-                      <button
-                        type="button"
-                        onClick={() => setMode("register")}
-                        className="text-fuchsia-500 font-semibold"
-                      >
-                        Regístrate
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      ¿Ya tienes cuenta?{" "}
-                      <button
-                        type="button"
-                        onClick={() => setMode("login")}
-                        className="text-fuchsia-500 font-semibold"
-                      >
-                        Inicia sesión
-                      </button>
-                    </>
-                  )}
+                <div className="mt-4 text-center text-sm text-muted-foreground">
+                  ¿No tienes cuenta?{" "}
+                  <Link
+                    to="/registro"
+                    onClick={closeModal}
+                    className="font-semibold text-fuchsia-500"
+                  >
+                    Regístrate
+                  </Link>
                 </div>
               </Dialog.Panel>
             </Transition.Child>

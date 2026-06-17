@@ -33,10 +33,10 @@ const PopularChoreographies = () => {
   return (
     <section className="py-16 px-6 md:px-12">
       <div className="max-w-6xl mx-auto text-center mb-10">
-        <h2 className="text-4xl md:text-5xl font-extrabold text-purple-600">
+        <h2 className="text-4xl md:text-5xl font-extrabold text-foreground">
           Lo Más Popular
         </h2>
-        <p className="mt-3 text-gray-500 max-w-2xl mx-auto">
+        <p className="mx-auto mt-3 max-w-2xl text-muted-foreground">
           Descubre las coreografías más populares y aprende con los mejores
           instructores
         </p>

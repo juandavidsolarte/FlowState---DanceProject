@@ -1,53 +1,63 @@
 import React from "react";
-import { ShoppingCart, Moon } from "lucide-react";
+import { ShoppingCart, Moon, Sun } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useTheme } from "../theme/useTheme";
 
 const Navbar = ({ onLoginClick }) => {
+  const { isDarkMode, toggleTheme } = useTheme();
+
   return (
-    <nav className="flex items-center justify-between px-10 py-6 bg-white/80 backdrop-blur-md sticky top-0 z-40">
+    <nav className="sticky top-0 z-40 flex items-center justify-between border-b border-border/70 bg-background/80 px-6 py-5 backdrop-blur-md transition-colors md:px-10">
       {/* Logo */}
-      <div className="flex items-center gap-2">
-        <div className="w-8 h-8 bg-gradient-to-tr from-purple-500 to-pink-500 rounded-lg"></div>
-        <span className="text-2xl font-bold tracking-tighter text-slate-800">
-          flowstate
-        </span>
-      </div>
+      <Link to="/" className="flex items-center">
+        <img
+          src="/flowstate.png"
+          alt="Flowstate"
+          className="h-12 w-auto object-contain"
+        />
+      </Link>
 
       {/* Links Centrales */}
-      <div className="hidden md:flex items-center gap-8 text-gray-600 font-medium">
-        <Link to="/" className="hover:text-purple-600 transition-colors">
+      <div className="hidden items-center gap-8 font-medium text-muted-foreground md:flex">
+        <Link to="/" className="transition-colors hover:text-foreground">
           Home
         </Link>
-        <Link to="/about" className="hover:text-purple-600 transition-colors">
+        <Link to="/about" className="transition-colors hover:text-foreground">
           Sobre Nosotros
         </Link>
-        <Link to="/courses" className="hover:text-purple-600 transition-colors">
+        <Link to="/courses" className="transition-colors hover:text-foreground">
           Cursos
         </Link>
         <Link
           to="/choreographies"
-          className="hover:text-purple-600 transition-colors"
+          className="transition-colors hover:text-foreground"
         >
           Coreografías
         </Link>
       </div>
 
       {/* Botones Derecha */}
-      <div className="flex items-center gap-5">
-        <button className="p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-all">
+      <div className="flex items-center gap-3 md:gap-5">
+        <button className="rounded-full p-2 text-muted-foreground transition-all hover:bg-muted hover:text-foreground">
           <ShoppingCart size={22} />
         </button>
 
         {/* BOTÓN ACCEDE: Aquí disparamos el modal */}
         <button
           onClick={onLoginClick}
-          className="bg-gradient-to-r from-purple-500 to-fuchsia-500 text-white px-8 py-2.5 rounded-full font-bold shadow-lg shadow-purple-200 hover:scale-105 transition-transform"
+          className="rounded-full bg-gradient-to-r from-purple-500 to-fuchsia-500 px-6 py-2.5 font-bold text-white shadow-lg shadow-purple-200 transition-transform hover:scale-105 md:px-8"
         >
           Accede
         </button>
 
-        <button className="p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-all">
-          <Moon size={22} />
+        <button
+          onClick={toggleTheme}
+          className="rounded-full p-2 text-muted-foreground transition-all hover:bg-muted hover:text-foreground"
+          aria-label={isDarkMode ? "Activar modo claro" : "Activar modo nocturno"}
+          aria-pressed={isDarkMode}
+          title={isDarkMode ? "Activar modo claro" : "Activar modo nocturno"}
+        >
+          {isDarkMode ? <Sun size={22} /> : <Moon size={22} />}
         </button>
       </div>
     </nav>

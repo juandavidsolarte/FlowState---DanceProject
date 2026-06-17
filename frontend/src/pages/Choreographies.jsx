@@ -37,9 +37,9 @@ export default function Choreographies() {
   });
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-background text-foreground">
       {/* Hero Section */}
-      <section className="relative py-20 px-4 bg-muted/30">
+      <section className="relative bg-muted/30 px-4 py-20 dark:bg-muted/10">
         <div className="container mx-auto text-center">
           <h1
             className="text-4xl md:text-6xl font-bold mb-6"
@@ -74,7 +74,7 @@ export default function Choreographies() {
       </section>
 
       {/* Filters Section */}
-      <section className="py-8 px-4 border-b bg-white/95 backdrop-blur-md sticky top-16 z-40 shadow-sm">
+      <section className="sticky top-16 z-40 border-b border-border bg-background/95 px-4 py-8 shadow-sm backdrop-blur-md">
         <div className="container mx-auto">
           <div className="flex items-center gap-4 mb-4">
             <SlidersHorizontal className="h-5 w-5" />
@@ -84,7 +84,7 @@ export default function Choreographies() {
           <div className="grid md:grid-cols-2 gap-6">
             {/* Genre Filter */}
             <div>
-              <label className="block text-sm mb-2">Género</label>
+              <label className="mb-2 block text-sm text-muted-foreground">Género</label>
               <div className="flex flex-wrap gap-2">
                 {genres.map((genre) => (
                   <button
@@ -112,7 +112,7 @@ export default function Choreographies() {
 
             {/* Difficulty Filter */}
             <div>
-              <label className="block text-sm mb-2">Dificultad</label>
+              <label className="mb-2 block text-sm text-muted-foreground">Dificultad</label>
               <div className="flex flex-wrap gap-2">
                 {difficulties.map((difficulty) => (
                   <button
@@ -142,7 +142,7 @@ export default function Choreographies() {
       </section>
 
       {/* Results */}
-      <section className="py-16 px-4">
+      <section className="px-4 py-16">
         <div className="container mx-auto">
           <div className="mb-6">
             <p className="text-muted-foreground">
