@@ -8,7 +8,7 @@
         "backend": {
             "root": "backend",
             "routePrefix": "/_backend",
-            "entrypoint": "wsgi.py",
+            "entrypoint": "flowstate_backend/wsgi.py",
             "runtime": "@vercel/python"
         }
     }
