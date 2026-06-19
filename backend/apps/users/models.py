@@ -14,6 +14,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     first_name = models.CharField(max_length=150)
     last_name = models.CharField(max_length=150)
+    date_of_birth = models.DateField(null=True, blank=True)
+    country = models.CharField(max_length=100, blank=True)
     phone = models.CharField(max_length=20, blank=True)
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.CLIENTE)
 
@@ -24,7 +26,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     last_login = models.DateTimeField(null=True, blank=True)
 
     avatar = models.URLField(blank=True)
-    verification_token = models.UUIDField(null=True, blank=True)
+    email_verified_at = models.DateTimeField(null=True, blank=True)
+    verification_token = models.UUIDField(null=True, blank=True, unique=True, db_index=True)
+    verification_token_created_at = models.DateTimeField(null=True, blank=True)
 
     objects = UserManager()
 
