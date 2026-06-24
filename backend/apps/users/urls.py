@@ -1,22 +1,23 @@
 from django.urls import path
+
 from . import views
 
-app_name = 'users'
+app_name = "users"
 
 urlpatterns = [
-    path('ping/', views.ping, name='ping'),
-    path('auth/login/', views.LoginView.as_view(), name='login'),
-    path('auth/register/', views.RegisterView.as_view(), name='register'),
+    path("ping/", views.ping, name="ping"),
+    path("auth/login/", views.LoginView.as_view(), name="login"),
+    path("auth/register/", views.RegisterView.as_view(), name="register"),
     path(
-        'auth/refresh/',
+        "auth/refresh/",
         views.RefreshFromCookieView.as_view(),
-        name='refresh',
+        name="refresh",
     ),
-    path('auth/me/', views.MeView.as_view(), name='me'),
-    path('users/me/', views.MeView.as_view(), name='me-profile'),
+    path("auth/me/", views.MeView.as_view(), name="me"),
+    path("users/me/", views.MeView.as_view(), name="me-profile"),
     path(
-        'auth/change-password/',
+        "auth/change-password/",
         views.ChangePasswordView.as_view(),
-        name='change-password',
+        name="change-password",
     ),
 ]

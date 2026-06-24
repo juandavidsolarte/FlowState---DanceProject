@@ -1,6 +1,8 @@
 import re
-from rest_framework import serializers
+
 from django.contrib.auth import authenticate
+from rest_framework import serializers
+
 from .models import User
 
 
@@ -10,8 +12,13 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'id', 'email', 'first_name', 'last_name',
-            'role', 'full_name', 'avatar_url',
+            "id",
+            "email",
+            "first_name",
+            "last_name",
+            "role",
+            "full_name",
+            "avatar_url",
         ]
 
 
@@ -22,14 +29,12 @@ class LoginSerializer(serializers.Serializer):
 
     def validate(self, data):
         user = authenticate(
-            email=data.get('email'),
-            password=data.get('password'),
+            email=data.get("email"),
+            password=data.get("password"),
         )
         if user and user.is_active:
             return user
-        raise serializers.ValidationError(
-            "Credenciales incorrectas o cuenta inactiva."
-        )
+        raise serializers.ValidationError("Credenciales incorrectas o cuenta inactiva.")
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -37,15 +42,15 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['email', 'password', 'first_name', 'last_name', 'phone']
+        fields = ["email", "password", "first_name", "last_name", "phone"]
 
     def create(self, validated_data):
         user = User.objects.create_user(
-            email=validated_data['email'],
-            password=validated_data['password'],
-            first_name=validated_data.get('first_name', ''),
-            last_name=validated_data.get('last_name', ''),
-            phone=validated_data.get('phone', ''),
+            email=validated_data["email"],
+            password=validated_data["password"],
+            first_name=validated_data.get("first_name", ""),
+            last_name=validated_data.get("last_name", ""),
+            phone=validated_data.get("phone", ""),
             role=User.Role.CLIENTE,
         )
         return user
@@ -58,19 +63,19 @@ class UpdateProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['first_name', 'last_name', 'phone', 'avatar']
+        fields = ["first_name", "last_name", "phone", "avatar"]
 
     def validate_phone(self, value):
-        if value and not re.fullmatch(r'\d+', value):
+        if value and not re.fullmatch(r"\d+", value):
             raise serializers.ValidationError("El teléfono debe ser numérico.")
         return value
 
     def validate_avatar(self, file):
-        allowed_types = ['image/jpeg', 'image/png', 'image/webp']
-        allowed_extensions = ['.jpg', '.jpeg', '.png', '.webp']
+        allowed_types = ["image/jpeg", "image/png", "image/webp"]
+        allowed_extensions = [".jpg", ".jpeg", ".png", ".webp"]
 
-        parts = file.name.rsplit('.', 1)
-        ext = ('.' + parts[-1].lower()) if len(parts) == 2 else ''
+        parts = file.name.rsplit(".", 1)
+        ext = ("." + parts[-1].lower()) if len(parts) == 2 else ""
         if ext not in allowed_extensions:
             raise serializers.ValidationError(
                 "Formato de imagen no permitido. Usa jpg, png o webp."
@@ -83,23 +88,20 @@ class UpdateProfileSerializer(serializers.ModelSerializer):
 
         max_size = 2 * 1024 * 1024  # 2 MB
         if file.size > max_size:
-            raise serializers.ValidationError(
-                "La imagen no puede superar los 2 MB."
-            )
+            raise serializers.ValidationError("La imagen no puede superar los 2 MB.")
 
         return file
 
     def update(self, instance, validated_data):
-        avatar_file = validated_data.pop('avatar', None)
+        avatar_file = validated_data.pop("avatar", None)
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
         if avatar_file is not None:
             from .services import SupabaseService
-            public_url = SupabaseService.upload_avatar(
-                avatar_file, avatar_file.name
-            )
+
+            public_url = SupabaseService.upload_avatar(avatar_file, avatar_file.name)
             instance.avatar_url = public_url
 
         instance.save()
@@ -111,7 +113,7 @@ class ChangePasswordSerializer(serializers.Serializer):
     new_password = serializers.CharField(write_only=True)
 
     def validate_new_password(self, value):
-        pattern = r'^(?=.*[A-Z])(?=.*\d).{8,}$'
+        pattern = r"^(?=.*[A-Z])(?=.*\d).{8,}$"
         if not re.match(pattern, value):
             raise serializers.ValidationError(
                 "La nueva contraseña debe tener al menos 8 caracteres, "
@@ -120,8 +122,8 @@ class ChangePasswordSerializer(serializers.Serializer):
         return value
 
     def validate(self, data):
-        user = self.context['request'].user
-        if not user.check_password(data.get('current_password')):
+        user = self.context["request"].user
+        if not user.check_password(data.get("current_password")):
             raise serializers.ValidationError(
                 {"current_password": "La contraseña actual es incorrecta."}
             )

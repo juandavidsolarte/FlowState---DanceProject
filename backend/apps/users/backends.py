@@ -6,7 +6,7 @@ class EmailBackend:
 
     def authenticate(self, request, username=None, password=None, **kwargs):
         User = get_user_model()
-        email = kwargs.get('email') or username
+        email = kwargs.get("email") or username
         if email is None or password is None:
             return None
         try:
@@ -18,7 +18,7 @@ class EmailBackend:
         return None
 
     def user_can_authenticate(self, user):
-        is_active = getattr(user, 'is_active', None)
+        is_active = getattr(user, "is_active", None)
         return is_active or is_active is None
 
     def get_user(self, user_id):

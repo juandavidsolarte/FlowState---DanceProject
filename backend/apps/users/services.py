@@ -1,7 +1,8 @@
-import uuid
 import os
+import uuid
+
 from django.conf import settings
-from supabase import create_client, Client
+from supabase import Client, create_client
 
 
 def _get_client() -> Client:
@@ -46,12 +47,12 @@ class SupabaseService:
 
         file_bytes = file.read()
         content_type_map = {
-            '.jpg': 'image/jpeg',
-            '.jpeg': 'image/jpeg',
-            '.png': 'image/png',
-            '.webp': 'image/webp',
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".png": "image/png",
+            ".webp": "image/webp",
         }
-        content_type = content_type_map.get(ext, 'application/octet-stream')
+        content_type = content_type_map.get(ext, "application/octet-stream")
 
         client.storage.from_(bucket).upload(
             path=unique_name,
