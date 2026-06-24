@@ -15,7 +15,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     first_name = models.CharField(max_length=150)
     last_name = models.CharField(max_length=150)
     phone = models.CharField(max_length=20, blank=True)
-    role = models.CharField(max_length=20, choices=Role.choices, default=Role.CLIENTE)
+    role = models.CharField(
+        max_length=20, choices=Role.choices, default=Role.CLIENTE
+    )
 
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
@@ -23,7 +25,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     date_joined = models.DateTimeField(default=timezone.now)
     last_login = models.DateTimeField(null=True, blank=True)
 
-    avatar = models.URLField(blank=True)
+    avatar_url = models.CharField(max_length=500, null=True, blank=True)
     verification_token = models.UUIDField(null=True, blank=True)
 
     objects = UserManager()
