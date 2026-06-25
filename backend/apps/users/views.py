@@ -1,14 +1,29 @@
+import uuid
+import os
+from django.db import transaction
 from django.http import JsonResponse
+from django.utils import timezone
 from .models import User
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, generics
-import os
-import requests         
 
-from .serializers import LoginSerializer, UserSerializer, RegisterSerializer
+from .serializers import (
+    LoginSerializer,
+    UserSerializer,
+    RegisterSerializer,
+    ResendVerificationSerializer,
+)
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import authenticate
+
+from .utils import (
+    generate_verification_token,
+    send_verification_email,
+    verification_token_is_expired,
+    verify_recaptcha,
+)
 
 
 def ping(request):
@@ -34,20 +49,12 @@ class LoginView(APIView):
         user = serializer.validated_data
 
         # Optional reCAPTCHA verification if SECRET present
-        recaptcha_secret = os.getenv('RECAPTCHA_SECRET')
         recaptcha_token = request.data.get('recaptcha_token')
-        if recaptcha_secret:
-            try:
-                resp = requests.post(
-                    'https://www.google.com/recaptcha/api/siteverify',
-                    data={'secret': recaptcha_secret, 'response': recaptcha_token},
-                    timeout=5,
-                )
-                j = resp.json()
-                if not j.get('success'):
-                    return Response({'detail': 'reCAPTCHA verification failed.'}, status=status.HTTP_400_BAD_REQUEST)
-            except requests.RequestException:
-                return Response({'detail': 'reCAPTCHA verification error.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not verify_recaptcha(recaptcha_token, request.META.get('REMOTE_ADDR')):
+            return Response({'detail': 'La validación CAPTCHA falló.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not user.is_verified:
+            return Response({'detail': 'Cuenta no verificada. Revisa tu correo electrónico.'}, status=status.HTTP_400_BAD_REQUEST)
 
         refresh = RefreshToken.for_user(user)
         data = {
@@ -77,11 +84,120 @@ class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
 
     def post(self, request, *args, **kwargs):
-        response = super().post(request, *args, **kwargs)
-        return Response({
-            "message": "Usuario registrado exitosamente",
-            "user": response.data
-        }, status=status.HTTP_201_CREATED)
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        recaptcha_token = serializer.validated_data.get('recaptcha_token')
+        if not verify_recaptcha(recaptcha_token, request.META.get('REMOTE_ADDR')):
+            return Response({'detail': 'La validación CAPTCHA falló.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with transaction.atomic():
+                verification_token = generate_verification_token()
+                user = serializer.save(verification_token=verification_token)
+                send_verification_email(user)
+        except Exception:
+            return Response(
+                {'detail': 'No se pudo enviar el correo de verificación. Intenta nuevamente.'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        return Response(
+            {
+                'message': 'Usuario registrado. Revisa tu correo para verificar tu cuenta.',
+                'user': UserSerializer(user).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class VerifyEmailView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, token):
+        try:
+            verification_token = uuid.UUID(str(token))
+        except (ValueError, TypeError):
+            return Response({'detail': 'Verification link is invalid.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user = User.objects.get(verification_token=verification_token)
+        except User.DoesNotExist:
+            return Response({'detail': 'Verification link is invalid.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if verification_token_is_expired(user):
+            return Response({'detail': 'Verification link has expired.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.is_verified = True
+        user.is_active = True
+        user.email_verified_at = timezone.now()
+        user.verification_token = None
+        user.verification_token_created_at = None
+        user.save(update_fields=['is_verified', 'is_active', 'email_verified_at', 'verification_token', 'verification_token_created_at'])
+
+        refresh = RefreshToken.for_user(user)
+        response = Response(
+            {
+                'message': 'Cuenta verificada correctamente.',
+                'access': str(refresh.access_token),
+                'user': UserSerializer(user).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+        secure_cookie = os.getenv('DJANGO_ENV', 'development') == 'production'
+        response.set_cookie(
+            'refresh',
+            str(refresh),
+            httponly=True,
+            secure=secure_cookie,
+            samesite='Lax',
+            path='/',
+            max_age=7 * 24 * 3600,
+        )
+        return response
+
+
+class ResendVerificationView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = ResendVerificationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data['email']
+        recaptcha_token = serializer.validated_data.get('recaptcha_token')
+
+        if not verify_recaptcha(recaptcha_token, request.META.get('REMOTE_ADDR')):
+            return Response({'detail': 'La validación CAPTCHA falló.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(email__iexact=email).first()
+        if not user:
+            return Response(
+                {'message': 'Si la cuenta existe, se enviará un nuevo enlace de verificación.'},
+                status=status.HTTP_200_OK,
+            )
+
+        if user.is_verified:
+            return Response(
+                {'message': 'Si la cuenta existe, se enviará un nuevo enlace de verificación.'},
+                status=status.HTTP_200_OK,
+            )
+
+        try:
+            with transaction.atomic():
+                user.verification_token = generate_verification_token()
+                user.verification_token_created_at = timezone.now()
+                user.save(update_fields=['verification_token', 'verification_token_created_at'])
+                send_verification_email(user)
+        except Exception:
+            return Response(
+                {'detail': 'No se pudo reenviar el correo de verificación.'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        return Response(
+            {'message': 'Si la cuenta existe, se enviará un nuevo enlace de verificación.'},
+            status=status.HTTP_200_OK,
+        )
 
 
 class RefreshFromCookieView(APIView):

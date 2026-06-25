@@ -68,9 +68,9 @@ const ChoreographyDetail = () => {
 
   if (!item)
     return (
-      <div className="p-8">
+      <div className="min-h-screen bg-background p-8 text-foreground">
         <p>Coreografía no encontrada.</p>
-        <Link to="/" className="text-purple-600">
+        <Link to="/" className="text-primary hover:underline">
           Volver
         </Link>
       </div>
@@ -86,12 +86,11 @@ const ChoreographyDetail = () => {
   const fallbackImage = location?.state?.image || item.img;
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-background text-foreground">
       <div className="max-w-6xl mx-auto px-6 py-8">
         <Link
           to="/"
-          // We no longer allow uploading media here; the page shows the
-          // category-specific video by default (or a fallback image).
+          className="inline-flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft size={18} /> Volver
         </Link>
@@ -101,7 +100,7 @@ const ChoreographyDetail = () => {
           <div className="lg:col-span-2">
             {/* Centered container with black background to hold the video
                 The video will use object-contain and be limited to the viewport height */}
-            <div className="w-full bg-black rounded-lg overflow-hidden flex items-center justify-center">
+            <div className="flex w-full items-center justify-center overflow-hidden rounded-lg bg-black">
               {defaultVideo ? (
                 <div className="relative w-full flex items-center justify-center">
                   {/* Blurred background layer , fills area */}
@@ -130,7 +129,7 @@ const ChoreographyDetail = () => {
                   <button
                     onClick={() => setIsMuted((s) => !s)}
                     aria-label={isMuted ? "Unmute video" : "Mute video"}
-                    className="absolute right-4 top-4 z-20 bg-black/40 text-white p-2 rounded-full hover:bg-black/60 transition-transform transform hover:scale-105"
+                    className="absolute right-4 top-4 z-20 rounded-full bg-black/40 p-2 text-white transition-transform hover:scale-105 hover:bg-black/60"
                   >
                     {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
                   </button>
@@ -151,35 +150,35 @@ const ChoreographyDetail = () => {
           <div className="lg:col-span-1 flex flex-col gap-6">
             <div>
               <div className="flex items-center gap-4 mb-3">
-                <div className="inline-flex items-center gap-2 bg-white/60 px-3 py-1 rounded-full">
+                <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/70 px-3 py-1">
                   <Star className="h-4 w-4 text-yellow-400" />
                   <span className="font-medium">{item.rating}</span>
-                  <span className="text-sm text-gray-500">
+                  <span className="text-sm text-muted-foreground">
                     ({item.reviews} reseñas)
                   </span>
                 </div>
 
-                <div className="inline-flex items-center gap-2 text-gray-500">
+                <div className="inline-flex items-center gap-2 text-muted-foreground">
                   <Clock className="h-4 w-4" />
                   <span>{item.duration}</span>
                 </div>
 
-                <div className="inline-flex items-center gap-2 text-gray-500">
+                <div className="inline-flex items-center gap-2 text-muted-foreground">
                   <Users className="h-4 w-4" />
                   <span>{item.responsible || "Sin asignar"}</span>
                 </div>
               </div>
 
-              <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900">
+              <h1 className="text-3xl md:text-4xl font-extrabold text-foreground">
                 {item.title}
               </h1>
-              <p className="mt-2 text-gray-500">
+              <p className="mt-2 text-muted-foreground">
                 {item.category} • {item.level}
               </p>
 
               <section className="mt-4">
                 <h3 className="text-lg font-semibold mb-2">Descripción</h3>
-                <p className="text-gray-700">{item.description}</p>
+                <p className="text-muted-foreground">{item.description}</p>
               </section>
 
               {/* Qué incluye */}
@@ -192,7 +191,7 @@ const ChoreographyDetail = () => {
                         <span className="mt-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-purple-500 text-white">
                           ✓
                         </span>
-                        <span className="text-gray-700">{inc}</span>
+                        <span className="text-foreground">{inc}</span>
                       </li>
                     ))}
                   </ul>
@@ -203,7 +202,7 @@ const ChoreographyDetail = () => {
               {item.requirements && (
                 <section className="mt-8">
                   <h3 className="text-xl font-bold mb-4">Requisitos</h3>
-                  <ul className="list-inside list-disc text-gray-700 space-y-2">
+                  <ul className="list-inside list-disc space-y-2 text-foreground">
                     {item.requirements.map((req, i) => (
                       <li key={i}>{req}</li>
                     ))}
@@ -212,32 +211,32 @@ const ChoreographyDetail = () => {
               )}
             </div>
 
-            <aside className="bg-white rounded-xl p-6 shadow-md">
-              <div className="text-right text-sm text-gray-500">Precio</div>
+            <aside className="rounded-xl border border-border bg-card p-6 shadow-md">
+              <div className="text-right text-sm text-muted-foreground">Precio</div>
               <div className="text-3xl font-bold mt-2">
                 ${item.price?.toFixed(2) ?? "—"}
               </div>
 
               <div className="mt-4 grid gap-3">
-                <button className="w-full bg-gradient-to-r from-purple-500 to-fuchsia-500 text-white py-3 rounded-lg flex items-center justify-center gap-2">
+                <button className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-purple-500 to-fuchsia-500 py-3 text-white">
                   <ShoppingCart /> Comprar Ahora
                 </button>
 
-                <button className="w-full border rounded-lg py-3 flex items-center justify-center gap-2">
+                <button className="flex w-full items-center justify-center gap-2 rounded-lg border border-border py-3 text-foreground transition-colors hover:bg-muted">
                   <ShoppingCart /> Agregar al Carrito
                 </button>
 
                 <div className="flex gap-3 mt-2">
-                  <button className="flex-1 border rounded-lg py-3 flex items-center justify-center">
+                  <button className="flex flex-1 items-center justify-center rounded-lg border border-border py-3 text-foreground transition-colors hover:bg-muted">
                     <Heart />
                   </button>
-                  <button className="flex-1 border rounded-lg py-3 flex items-center justify-center">
+                  <button className="flex flex-1 items-center justify-center rounded-lg border border-border py-3 text-foreground transition-colors hover:bg-muted">
                     <Share2 />
                   </button>
                 </div>
               </div>
 
-              <div className="mt-6 border-t pt-4 text-sm text-gray-600">
+              <div className="mt-6 border-t border-border pt-4 text-sm text-muted-foreground">
                 <div className="flex justify-between">
                   <span>Garantía</span>
                   <span>30 días</span>

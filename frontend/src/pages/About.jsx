@@ -4,9 +4,9 @@ import { Users, Award, Heart, Globe } from "lucide-react";
 
 export default function About() {
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-background text-foreground">
       {/* Hero Section */}
-      <section className="relative py-20 px-4">
+      <section className="relative px-4 py-20">
         <div className="container mx-auto">
           <h1
             className="text-4xl md:text-6xl font-bold text-center mb-6"
@@ -20,19 +20,19 @@ export default function About() {
           >
             Sobre Flowstate
           </h1>
-          <p className="text-xl text-center text-muted-foreground max-w-3xl mx-auto">
+          <p className="mx-auto max-w-3xl text-center text-xl text-muted-foreground">
             Tu plataforma de confianza para aprender y dominar el arte del baile
           </p>
         </div>
       </section>
 
       {/* Mission Section */}
-      <section className="py-16 px-4">
+      <section className="px-4 py-16">
         <div className="container mx-auto">
           <div className="grid md:grid-cols-2 gap-12 items-center">
             <div>
               <h2 className="text-3xl font-bold mb-4">Nuestra Misión</h2>
-              <p className="text-muted-foreground mb-4">
+              <p className="mb-4 text-muted-foreground">
                 En Flowstate, creemos que el baile es una forma universal de
                 expresión que trasciende fronteras y conecta culturas. Nuestra
                 misión es hacer que el aprendizaje del baile sea accesible para
@@ -44,7 +44,7 @@ export default function About() {
                 ritmo y alcanzar tu máximo potencial.
               </p>
             </div>
-            <div className="rounded-2xl overflow-hidden">
+            <div className="overflow-hidden rounded-2xl border border-border shadow-lg">
               <ImageWithFallback
                 src="https://images.unsplash.com/photo-1706604342065-f36f34513a9f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxkYW5jZSUyMHN0dWRpbyUyMHRlYW0lMjBhYm91dCUyMHVzfGVufDF8fHx8MTc3NDAwNDI4Mnww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral"
                 alt="Flowstate Team"
@@ -56,7 +56,7 @@ export default function About() {
       </section>
 
       {/* Values Section */}
-      <section className="py-16 px-4 bg-muted/30">
+      <section className="bg-muted/30 px-4 py-16 dark:bg-muted/10">
         <div className="container mx-auto">
           <h2 className="text-3xl font-bold text-center mb-12">
             Nuestros Valores
@@ -130,7 +130,7 @@ export default function About() {
       </section>
 
       {/* Stats Section */}
-      <section className="py-16 px-4">
+      <section className="px-4 py-16">
         <div className="container mx-auto">
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8 text-center">
             <div>

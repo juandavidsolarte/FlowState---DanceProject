@@ -1,0 +1,10 @@
+Hola {{ user.first_name }}
+
+Gracias por registrarte en {{ brand_name }}.
+
+Para activar tu cuenta, confirma tu correo haciendo clic en este enlace:
+{{ verification_link }}
+
+Este enlace expira en {{ expiry_hours }} horas.
+
+Si no solicitaste este registro, puedes ignorar este correo.

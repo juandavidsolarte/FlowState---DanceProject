@@ -97,9 +97,9 @@ export default function Courses() {
       : courses.filter((course) => course.level === filter);
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-background text-foreground">
       {/* Hero Section */}
-      <section className="relative py-20 px-4 bg-muted/30">
+      <section className="relative bg-muted/30 px-4 py-20 dark:bg-muted/10">
         <div className="container mx-auto text-center">
           <h1
             className="text-4xl md:text-6xl font-bold mb-6"
@@ -121,7 +121,7 @@ export default function Courses() {
       </section>
 
       {/* Filter Section */}
-      <section className="py-8 px-4 border-b">
+      <section className="border-b border-border px-4 py-8 bg-background/80 backdrop-blur-sm">
         <div className="container mx-auto">
           <div className="flex flex-wrap gap-4 justify-center">
             <button
@@ -199,7 +199,7 @@ export default function Courses() {
       </section>
 
       {/* Courses Grid */}
-      <section className="py-16 px-4">
+      <section className="px-4 py-16">
         <div className="container mx-auto">
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
             {filteredCourses.map((course) => (
@@ -207,7 +207,7 @@ export default function Courses() {
                 key={course.id}
                 to={`/choreographies/${course.id}`}
                 state={{ image: course.image }}
-                className="group bg-card rounded-xl overflow-hidden border hover:shadow-lg transition-all"
+                className="group overflow-hidden rounded-xl border border-border bg-card text-card-foreground transition-all hover:shadow-lg"
               >
                 <div className="relative overflow-hidden aspect-video">
                   <ImageWithFallback
@@ -215,12 +215,12 @@ export default function Courses() {
                     alt={course.title}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                   />
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <button className="p-4 rounded-full bg-white/90 hover:bg-white transition-colors">
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+                    <button className="rounded-full bg-background/90 p-4 text-foreground transition-colors hover:bg-background">
                       <Play className="h-6 w-6 text-[var(--gradient-violet)]" />
                     </button>
                   </div>
-                  <span className="absolute top-4 right-4 px-3 py-1 rounded-full text-xs font-medium bg-white/90 text-black">
+                  <span className="absolute right-4 top-4 rounded-full bg-background/90 px-3 py-1 text-xs font-medium text-foreground">
                     {course.level}
                   </span>
                 </div>
