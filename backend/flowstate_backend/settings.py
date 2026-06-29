@@ -176,6 +176,11 @@ CORS_ALLOW_CREDENTIALS = True
 # Custom User Model
 AUTH_USER_MODEL = 'users.User'
 
+# Supabase Storage
+SUPABASE_URL = os.getenv('SUPABASE_URL')
+SUPABASE_KEY = os.getenv('SUPABASE_KEY')
+SUPABASE_BUCKET = os.getenv('SUPABASE_BUCKET', 'avatars')
+
 # Authentication backends: allow login by email
 AUTHENTICATION_BACKENDS = [
     'apps.users.backends.EmailBackend',

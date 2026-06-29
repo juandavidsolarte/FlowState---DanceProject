@@ -38,6 +38,7 @@ pytokens==0.4.1
 requests==2.32.5
 rich==15.0.0
 sqlparse==0.5.5
+supabase==2.13.0
 tomli==2.4.1
 typing_extensions==4.15.0
 tzdata==2026.1

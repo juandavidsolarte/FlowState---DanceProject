@@ -42,4 +42,5 @@ thumbs.db
 desktop.ini
 
 # --- DOCKER ---
-.docker/
+.docker/.cursorrules
+DIARIO_TECNICO_FLOWSTATE.md
