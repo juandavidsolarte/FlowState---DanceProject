@@ -12,8 +12,11 @@ import Footer from "./components/Footer";
 import Register from "./pages/Register";
 import VerifyEmail from "./pages/VerifyEmail";
 import Catalog from "./pages/Catalog";
+import DashboardLayout from "./layouts/DashboardLayout";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import Equipo from "./pages/admin/Equipo"
 
-// Home page layout (kept as inner component so we can mount modal state)
+
 const HomePage = () => (
   <main>
     <Hero />
@@ -24,7 +27,6 @@ const HomePage = () => (
 const App = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const location = useLocation();
-
   const openModal = () => setIsModalOpen(true);
   const closeModal = () => setIsModalOpen(false);
 
@@ -34,11 +36,13 @@ const App = () => {
     }
   }, [location.state]);
 
+  const isDashboard = location.pathname.startsWith("/dashboard");
+
   return (
     <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
-      <Navbar onLoginClick={openModal} />
-
+      {!isDashboard && <Navbar onLoginClick={openModal} />}
       <Routes>
+        {/* Rutas públicas */}
         <Route path="/" element={<HomePage />} />
         <Route path="/choreographies/:id" element={<ChoreographyDetail />} />
         <Route path="/choreographies" element={<Choreographies />} />
@@ -47,10 +51,15 @@ const App = () => {
         <Route path="/verificar-email/:token" element={<VerifyEmail />} />
         <Route path="/about" element={<About />} />
         <Route path="/courses" element={<Courses />} />
-      </Routes>
 
-      <Footer />
-      <AuthModal isOpen={isModalOpen} closeModal={closeModal} />
+        {/* Rutas del dashboard */}
+        <Route path="/dashboard" element={<DashboardLayout />}>
+  <Route path="admin" element={<AdminDashboard />} />
+  <Route path="admin/equipo" element={<Equipo />} />
+</Route>
+      </Routes>
+      {!isDashboard && <Footer />}
+      {!isDashboard && <AuthModal isOpen={isModalOpen} closeModal={closeModal} />}
     </div>
   );
 };
