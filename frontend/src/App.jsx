@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Routes, Route } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { Routes, Route, useLocation } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import Hero from "./components/Hero";
 import AuthModal from "./components/AuthModal";
@@ -9,18 +9,9 @@ import About from "./pages/About";
 import Courses from "./pages/Courses";
 import Choreographies from "./pages/Choreographies";
 import Footer from "./components/Footer";
-
-/**
- * App - Route setup
- *
- * This file defines top-level routes for the SPA:
- * - `/` renders the home page (Hero + PopularChoreographies) and mounts the
- *   authentication modal state.
- * - `/choreographies/:id` renders the choreography detail/landing page.
- *
- * The modal state is kept in `HomePage` so the modal can be opened from the
- * `Navbar` (via `openModal`) while keeping routing concerns separated.
- */
+import Register from "./pages/Register";
+import VerifyEmail from "./pages/VerifyEmail";
+import Catalog from "./pages/Catalog";
 
 // Home page layout (kept as inner component so we can mount modal state)
 const HomePage = () => (
@@ -32,17 +23,28 @@ const HomePage = () => (
 
 const App = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const location = useLocation();
+
   const openModal = () => setIsModalOpen(true);
   const closeModal = () => setIsModalOpen(false);
 
+  useEffect(() => {
+    if (location.state?.openLogin) {
+      setIsModalOpen(true);
+    }
+  }, [location.state]);
+
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
       <Navbar onLoginClick={openModal} />
 
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/choreographies/:id" element={<ChoreographyDetail />} />
         <Route path="/choreographies" element={<Choreographies />} />
+        <Route path="/catalogo" element={<Catalog />} />
+        <Route path="/registro" element={<Register />} />
+        <Route path="/verificar-email/:token" element={<VerifyEmail />} />
         <Route path="/about" element={<About />} />
         <Route path="/courses" element={<Courses />} />
       </Routes>

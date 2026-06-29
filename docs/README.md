@@ -195,7 +195,7 @@ Frontend disponible en: http://localhost:5173
 **Gestion de Usuarios (RBAC):**
 
 - Roles: Director, Administrador, Profesor, Cliente
-- Registro con CAPTCHA (Google reCAPTCHA v2)
+- Registro con CAPTCHA (Google reCAPTCHA v2 checkbox)
 - Autenticacion JWT con access/refresh tokens
 - Bloqueo tras 5 intentos fallidos, validacion de email
 
@@ -245,6 +245,13 @@ EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
 # JWT
 ACCESS_TOKEN_LIFETIME=60
 REFRESH_TOKEN_LIFETIME=1440
+
+# CAPTCHA
+# Usa un par de reCAPTCHA v2 del mismo proyecto:
+# - frontend/.env: VITE_RECAPTCHA_SITE_KEY
+# - backend/.env: RECAPTCHA_SECRET
+# Autoriza localhost/127.0.0.1 en Google reCAPTCHA para desarrollo.
+# Si no configuras la clave de frontend en desarrollo, se usa la clave de prueba oficial de Google.
 ```
 
 ## Testing

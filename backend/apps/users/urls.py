@@ -9,6 +9,8 @@ Rutas disponibles:
     GET            /api/v1/ping/
     POST           /api/v1/auth/login/
     POST           /api/v1/auth/register/
+    GET            /api/v1/auth/verify-email/<token>/
+    POST           /api/v1/auth/resend-verification/
     POST           /api/v1/auth/refresh/
     GET            /api/v1/auth/me/         (legado)
     GET | PATCH    /api/v1/users/me/
@@ -22,27 +24,20 @@ from . import views
 app_name = "users"
 
 urlpatterns = [
+    # Rutas Base e Inicio de Sesión
     path("ping/", views.ping, name="ping"),
     path("auth/login/", views.LoginView.as_view(), name="login"),
-    path(
-        "auth/register/",
-        views.RegisterView.as_view(),
-        name="register",
-    ),
-    path(
-        "auth/refresh/",
-        views.RefreshFromCookieView.as_view(),
-        name="refresh",
-    ),
-    # Ruta legada: el frontend actual la usa para el GET del perfil.
-    # Se mantiene para no romper nada mientras se migra a /users/me/.
+    path("auth/register/", views.RegisterView.as_view(), name="register"),
+    path("auth/refresh/", views.RefreshFromCookieView.as_view(), name="refresh"),
+    
+    # Rutas de Verificación de Cuenta 
+    path("auth/verify-email/<uuid:token>/", views.VerifyEmailView.as_view(), name="verify-email"),
+    path("auth/resend-verification/", views.ResendVerificationView.as_view(), name="resend-verification"),
+    
+    # Perfil de Usuario 
     path("auth/me/", views.MeView.as_view(), name="me"),
-    # Ruta canónica del perfil (SCRUM-61): acepta GET y PATCH.
-    # El frontend nuevo debe apuntar aquí para actualizar el perfil.
     path("users/me/", views.MeView.as_view(), name="me-profile"),
-    path(
-        "auth/change-password/",
-        views.ChangePasswordView.as_view(),
-        name="change-password",
-    ),
+    
+    # Seguridad (De feature/US-003)
+    path("auth/change-password/", views.ChangePasswordView.as_view(), name="change-password"),
 ]

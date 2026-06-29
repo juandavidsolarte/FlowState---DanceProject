@@ -37,6 +37,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     first_name = models.CharField(max_length=150)
     last_name = models.CharField(max_length=150)
+    date_of_birth = models.DateField(null=True, blank=True)
+    country = models.CharField(max_length=100, blank=True)
     phone = models.CharField(max_length=20, blank=True)
     role = models.CharField(
         max_length=20, choices=Role.choices, default=Role.CLIENTE
@@ -48,14 +50,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     date_joined = models.DateTimeField(default=timezone.now)
     last_login = models.DateTimeField(null=True, blank=True)
 
-    # URL pública del avatar en Supabase. null=True porque el usuario
-    # puede no tener foto de perfil aún.
+    # URL pública del avatar en Supabase (Tomado de la rama feature/US-003 por compatibilidad con la migración)
     avatar_url = models.CharField(max_length=500, null=True, blank=True)
 
-    # Token UUID para verificar el email al registrarse.
-    # UUID = identificador único universal de 128 bits.
-    # Se pone en null una vez que el usuario confirma su cuenta.
-    verification_token = models.UUIDField(null=True, blank=True)
+    # Campos de verificación avanzados (Mantenidos y rescatados de tu Main original)
+    email_verified_at = models.DateTimeField(null=True, blank=True)
+    verification_token = models.UUIDField(null=True, blank=True, unique=True, db_index=True)
+    verification_token_created_at = models.DateTimeField(null=True, blank=True)
 
     objects = UserManager()
 

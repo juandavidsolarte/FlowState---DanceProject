@@ -9,6 +9,8 @@ Endpoints expuestos (prefijo /api/v1/ en flowstate_backend/urls.py):
     GET            /ping/
     POST           /auth/login/
     POST           /auth/register/
+    GET            /auth/verify-email/<token>/
+    POST           /auth/resend-verification/
     POST           /auth/refresh/
     GET            /auth/me/            (legado)
     GET | PATCH    /users/me/
@@ -21,9 +23,12 @@ lo que protege contra ataques XSS.
 """
 
 import os
+import uuid
 
-import requests
+from django.contrib.auth import authenticate
+from django.db import transaction
 from django.http import JsonResponse
+from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -31,9 +36,20 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import User
-from .serializers import (ChangePasswordSerializer, LoginSerializer,
-                          RegisterSerializer, UpdateProfileSerializer,
-                          UserSerializer)
+from .serializers import (
+    ChangePasswordSerializer,
+    LoginSerializer,
+    RegisterSerializer,
+    ResendVerificationSerializer,
+    UpdateProfileSerializer,
+    UserSerializer,
+)
+from .utils import (
+    generate_verification_token,
+    send_verification_email,
+    verification_token_is_expired,
+    verify_recaptcha,
+)
 
 
 def ping(request):
@@ -54,19 +70,11 @@ class LoginView(APIView):
          lo envía automáticamente, protegido contra robo por XSS.
     """
 
-    # AllowAny porque cualquier persona puede intentar hacer login
     permission_classes = [AllowAny]
 
     def post(self, request):
         """
         Procesa el intento de login y emite los tokens JWT.
-
-        Args:
-            request: body con 'email', 'password', 'recaptcha_token'.
-
-        Returns:
-            200: access token y datos del usuario en JSON.
-            400: credenciales incorrectas o reCAPTCHA inválido.
         """
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -74,33 +82,22 @@ class LoginView(APIView):
         # El LoginSerializer.validate() retorna el objeto User completo
         user = serializer.validated_data
 
-        # reCAPTCHA solo se verifica si RECAPTCHA_SECRET está en .env.
-        # En desarrollo local generalmente no está, en producción sí.
-        recaptcha_secret = os.getenv("RECAPTCHA_SECRET")
+        # Validación limpia de reCAPTCHA heredada de main
         recaptcha_token = request.data.get("recaptcha_token")
-        if recaptcha_secret:
-            try:
-                resp = requests.post(
-                    "https://www.google.com/recaptcha/api/siteverify",
-                    data={
-                        "secret": recaptcha_secret,
-                        "response": recaptcha_token,
-                    },
-                    timeout=5,
-                )
-                j = resp.json()
-                if not j.get("success"):
-                    return Response(
-                        {"detail": "reCAPTCHA verification failed."},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-            except requests.RequestException:
-                return Response(
-                    {"detail": "reCAPTCHA verification error."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+        if not verify_recaptcha(recaptcha_token, request.META.get("REMOTE_ADDR")):
+            return Response(
+                {"detail": "La validación CAPTCHA falló."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        # for_user() genera el par refresh + access token vinculado al user
+        # Bloqueo de seguridad: cuentas sin verificar no loguean
+        if not user.is_verified:
+            return Response(
+                {"detail": "Cuenta no verificada. Revisa tu correo electrónico."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Generación de tokens JWT
         refresh = RefreshToken.for_user(user)
         data = {
             "access": str(refresh.access_token),
@@ -109,11 +106,7 @@ class LoginView(APIView):
 
         response = Response(data, status=status.HTTP_200_OK)
 
-        # En producción secure=True obliga a enviar la cookie solo por
-        # HTTPS. En desarrollo local lo desactivamos para poder probar.
         secure_cookie = os.getenv("DJANGO_ENV", "development") == "production"
-        # httponly=True impide que JavaScript del browser lea la cookie,
-        # protegiéndonos de ataques XSS que roban tokens de sesión.
         response.set_cookie(
             "refresh",
             str(refresh),
@@ -128,11 +121,7 @@ class LoginView(APIView):
 
 class RegisterView(generics.CreateAPIView):
     """
-    Endpoint de registro: crea un nuevo usuario con rol Cliente.
-
-    Hereda de generics.CreateAPIView que ya maneja el POST y la
-    creación del objeto. Sobreescribimos post() solo para personalizar
-    el formato de la respuesta.
+    Endpoint de registro: crea un nuevo usuario y despacha token de correo.
     """
 
     queryset = User.objects.all()
@@ -140,49 +129,129 @@ class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
 
     def post(self, request, *args, **kwargs):
-        """
-        Registra un nuevo usuario y retorna sus datos básicos.
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
 
-        Args:
-            request: body con 'email', 'password', 'first_name',
-                'last_name', 'phone'.
+        recaptcha_token = serializer.validated_data.get("recaptcha_token")
+        if not verify_recaptcha(recaptcha_token, request.META.get("REMOTE_ADDR")):
+            return Response(
+                {"detail": "La validación CAPTCHA falló."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        Returns:
-            201: mensaje de éxito y datos del usuario creado.
-            400: email ya registrado o datos inválidos.
-        """
-        response = super().post(request, *args, **kwargs)
+        try:
+            # Lógica transaccional segura rescatada de main
+            with transaction.atomic():
+                verification_token = generate_verification_token()
+                user = serializer.save(verification_token=verification_token)
+                send_verification_email(user)
+        except Exception:
+            return Response(
+                {"detail": "No se pudo enviar el correo de verificación. Intenta nuevamente."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
         return Response(
             {
-                "message": "Usuario registrado exitosamente",
-                "user": response.data,
+                "message": "Usuario registrado. Revisa tu correo para verificar tu cuenta.",
+                "user": UserSerializer(user).data,
             },
             status=status.HTTP_201_CREATED,
+        )
+
+
+class VerifyEmailView(APIView):
+    """Endpoint para confirmar el correo usando el token enviado."""
+    permission_classes = [AllowAny]
+
+    def get(self, request, token):
+        try:
+            verification_token = uuid.UUID(str(token))
+        except (ValueError, TypeError):
+            return Response({"detail": "Verification link is invalid."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user = User.objects.get(verification_token=verification_token)
+        except User.DoesNotExist:
+            return Response({"detail": "Verification link is invalid."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if verification_token_is_expired(user):
+            return Response({"detail": "Verification link has expired."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.is_verified = True
+        user.is_active = True
+        user.email_verified_at = timezone.now()
+        user.verification_token = None
+        user.verification_token_created_at = None
+        user.save(update_fields=["is_verified", "is_active", "email_verified_at", "verification_token", "verification_token_created_at"])
+
+        refresh = RefreshToken.for_user(user)
+        response = Response(
+            {
+                "message": "Cuenta verificada correctamente.",
+                "access": str(refresh.access_token),
+                "user": UserSerializer(user).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+        secure_cookie = os.getenv("DJANGO_ENV", "development") == "production"
+        response.set_cookie(
+            "refresh",
+            str(refresh),
+            httponly=True,
+            secure=secure_cookie,
+            samesite="Lax",
+            path="/",
+            max_age=7 * 24 * 3600,
+        )
+        return response
+
+
+class ResendVerificationView(APIView):
+    """Endpoint para solicitar un nuevo token de confirmación por correo."""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = ResendVerificationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data["email"]
+        recaptcha_token = serializer.validated_data.get("recaptcha_token")
+
+        if not verify_recaptcha(recaptcha_token, request.META.get("REMOTE_ADDR")):
+            return Response({"detail": "La validación CAPTCHA falló."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(email__iexact=email).first()
+        if not user or user.is_verified:
+            return Response(
+                {"message": "Si la cuenta existe, se enviará un nuevo enlace de verificación."},
+                status=status.HTTP_200_OK,
+            )
+
+        try:
+            with transaction.atomic():
+                user.verification_token = generate_verification_token()
+                user.verification_token_created_at = timezone.now()
+                user.save(update_fields=["verification_token", "verification_token_created_at"])
+                send_verification_email(user)
+        except Exception:
+            return Response(
+                {"detail": "No se pudo reenviar el correo de verificación."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        return Response(
+            {"message": "Si la cuenta existe, se enviará un nuevo enlace de verificación."},
+            status=status.HTTP_200_OK,
         )
 
 
 class RefreshFromCookieView(APIView):
     """
     Renueva el access token usando el refresh token de la cookie.
-
-    El frontend llama este endpoint cuando el access token expira (60
-    min). El browser envía la cookie HttpOnly automáticamente y Django
-    emite un nuevo access token sin que el usuario vuelva a loguearse.
     """
-
     permission_classes = [AllowAny]
 
     def post(self, request):
-        """
-        Lee la cookie 'refresh' y emite un nuevo access token.
-
-        Args:
-            request: debe incluir la cookie 'refresh' en los headers.
-
-        Returns:
-            200: nuevo 'access' token en JSON.
-            401: sin cookie, o el refresh token expiró o es inválido.
-        """
         refresh_token = request.COOKIES.get("refresh")
         if not refresh_token:
             return Response(
@@ -205,45 +274,15 @@ class RefreshFromCookieView(APIView):
 
 class MeView(APIView):
     """
-    Endpoints del perfil del usuario autenticado.
-
-    GET   → devuelve los datos del perfil actual.
-    PATCH → actualiza nombre, apellido, teléfono y/o avatar.
-
-    Requiere JWT válido en el header: Authorization: Bearer <token>.
+    Endpoints del perfil del usuario autenticado (GET y PATCH).
     """
-
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        """
-        Retorna el perfil del usuario autenticado.
-
-        Returns:
-            200: datos del usuario (sin contraseña ni tokens internos).
-        """
         serializer = UserSerializer(request.user)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def patch(self, request):
-        """
-        Actualiza parcialmente el perfil del usuario autenticado.
-
-        Con partial=True el usuario puede enviar solo los campos que
-        quiere cambiar — no es necesario enviar todos en cada request.
-
-        El avatar debe enviarse como archivo en multipart/form-data,
-        no como JSON. El frontend debe usar FormData para esto.
-
-        Args:
-            request: puede incluir 'first_name', 'last_name', 'phone'
-                y/o 'avatar' (archivo de imagen).
-
-        Returns:
-            200: perfil completo actualizado.
-            400: campo inválido (teléfono con letras, imagen muy grande).
-            503: Supabase no disponible o variables de entorno faltantes.
-        """
         serializer = UpdateProfileSerializer(
             request.user,
             data=request.data,
@@ -254,13 +293,11 @@ class MeView(APIView):
         try:
             serializer.save()
         except EnvironmentError as exc:
-            # Supabase no configurado: SUPABASE_URL o SUPABASE_KEY vacíos
             return Response(
                 {"error": str(exc)},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         except Exception:
-            # Error inesperado al subir a Supabase (red, permisos, etc.)
             return Response(
                 {"error": "Error al subir la imagen. Intenta de nuevo."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -274,45 +311,25 @@ class MeView(APIView):
 class ChangePasswordView(APIView):
     """
     Endpoint para cambiar la contraseña del usuario autenticado.
-
-    Requiere la contraseña actual para confirmar que es el dueño de
-    la cuenta antes de hacer el cambio. La nueva contraseña debe
-    cumplir los requisitos de seguridad definidos en el serializer.
     """
-
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        """
-        Cambia la contraseña si las validaciones pasan.
-
-        Args:
-            request: body con 'current_password' y 'new_password'.
-
-        Returns:
-            200: mensaje de confirmación.
-            400: nueva contraseña no cumple los requisitos de seguridad.
-            401: contraseña actual incorrecta.
-        """
         serializer = ChangePasswordSerializer(
             data=request.data,
             context={"request": request},
         )
         if not serializer.is_valid():
             errors = serializer.errors
-            # Contraseña actual incorrecta → 401 para indicar problema
-            # de identidad, no de formato de datos
             if "current_password" in errors:
                 return Response(
                     {"error": errors["current_password"][0]},
                     status=status.HTTP_401_UNAUTHORIZED,
                 )
-            # Otros errores de validación → 400 Bad Request
             return Response(
                 {"error": errors},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        # set_password() hashea la contraseña antes de guardar en BD
         request.user.set_password(serializer.validated_data["new_password"])
         request.user.save()
         return Response(
