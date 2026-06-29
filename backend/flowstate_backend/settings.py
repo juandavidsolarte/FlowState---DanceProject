@@ -1,8 +1,15 @@
-import os, sys
+import os
+import sys
 from pathlib import Path
-from dotenv import load_dotenv
 
-load_dotenv()
+try:
+    # Intento estándar que usa Django en producción
+    import dotenv
+    dotenv.load_dotenv()
+except ImportError:
+    # Alternativa directa por si el editor se confunde de módulo
+    from dotenv import load_dotenv
+    load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, os.path.join(BASE_DIR, 'apps'))

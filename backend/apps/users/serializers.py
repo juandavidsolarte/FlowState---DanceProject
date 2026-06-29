@@ -15,7 +15,7 @@ from django.contrib.auth import authenticate
 from rest_framework import serializers
 
 from .models import User
-
+from django.contrib.auth.password_validation import validate_password
 
 class UserSerializer(serializers.ModelSerializer):
     """
@@ -131,3 +131,49 @@ class RegisterSerializer(serializers.ModelSerializer):
         )
         return user
 
+class ChangePasswordSerializer(serializers.Serializer):
+    current_password = serializers.CharField(required=True, write_only=True)
+    new_password = serializers.CharField(required=True, write_only=True)
+
+    def validate_current_password(self, value):
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("La contraseña actual es incorrecta.")
+        return value
+
+    def validate(self, data):
+        if data['current_password'] == data['new_password']:
+            raise serializers.ValidationError(
+                {"new_password": "La nueva contraseña no puede ser igual a la anterior."}
+            )
+        
+        # Opcional: Ejecuta las validaciones de contraseña por defecto de Django (longitud, etc.)
+        user = self.context['request'].user
+        validate_password(data['new_password'], user=user)
+        
+        return data
+
+class ResendVerificationSerializer(serializers.Serializer):
+    email = serializers.EmailField(required=True)
+
+    def validate_email(self, value):
+        # Limpia espacios innecesarios
+        return value.strip().lower()
+
+class UpdateProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = [
+            'first_name', 
+            'last_name', 
+            'phone', 
+            'date_of_birth', 
+            'avatar_url'
+        ]
+        extra_kwargs = {
+            'first_name': {'required': False, 'allow_blank': True},
+            'last_name': {'required': False, 'allow_blank': True},
+            'phone': {'required': False, 'allow_blank': True},
+            'date_of_birth': {'required': False, 'allow_null': True},
+            'avatar_url': {'required': False, 'allow_blank': True, 'allow_null': True},
+        }
