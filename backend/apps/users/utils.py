@@ -26,18 +26,29 @@ def verification_token_is_expired(user):
 
 
 def verify_recaptcha(token, remote_ip=None):
+
     secret = getattr(settings, 'RECAPTCHA_SECRET', '').strip()
+
+    print("========== RECAPTCHA ==========")
+    print("DEBUG:", settings.DEBUG)
+    print("TOKEN:", token)
+    print("SECRET:", secret[:10] + "..." if secret else "VACÍA")
+    print("===============================")
+
     if settings.DEBUG and secret in {'', TEST_RECAPTCHA_SECRET}:
+        print("Entró al modo DEBUG")
         return bool(token)
 
     payload = {
         'secret': secret,
         'response': token,
     }
+
     if remote_ip:
         payload['remoteip'] = remote_ip
 
     data = urllib.parse.urlencode(payload).encode('utf-8')
+
     request = urllib.request.Request(
         'https://www.google.com/recaptcha/api/siteverify',
         data=data,
@@ -47,7 +58,12 @@ def verify_recaptcha(token, remote_ip=None):
     try:
         with urllib.request.urlopen(request, timeout=5) as response:
             result = json.loads(response.read().decode('utf-8'))
-    except (urllib.error.URLError, ValueError):
+
+            print("Respuesta Google:")
+            print(result)
+
+    except (urllib.error.URLError, ValueError) as e:
+        print("ERROR RECAPTCHA:", e)
         return False
 
     return bool(result.get('success'))
