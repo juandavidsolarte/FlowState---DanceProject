@@ -24,6 +24,7 @@ lo que protege contra ataques XSS.
 
 import os
 import uuid
+from datetime import timedelta
 
 from django.db import transaction
 from django.http import JsonResponse
@@ -34,14 +35,58 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import User
+from .models import LoginAttempt, User
 from .permissions import IsDirectorOrAdmin
 from .serializers import (ChangePasswordSerializer, LoginSerializer,
                           RegisterSerializer, ResendVerificationSerializer,
-                          UpdateProfileSerializer, UserCreateSerializer,
-                          UserSerializer)
+                          UpdateProfileSerializer, UserSerializer)
 from .utils import (generate_verification_token, send_verification_email,
                     verification_token_is_expired, verify_recaptcha)
+
+MAX_LOGIN_ATTEMPTS = 5
+BLOCK_DURATION_MINUTES = 15
+
+
+def _get_client_ip(request):
+    """
+    Extrae la IP real del cliente.
+
+    En producción detrás de un proxy (Render), la IP viene en
+    X-Forwarded-For. Tomamos el primer elemento porque el proxy
+    añade la IP del cliente al principio de la cadena.
+    """
+    x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
+    if x_forwarded_for:
+        return x_forwarded_for.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR", "")
+
+
+def _register_failed_attempt(ip):
+    """
+    Incrementa el contador de intentos fallidos para la IP dada.
+
+    Si el bloqueo previo ya expiró, reinicia el contador antes de
+    incrementar para no acumular intentos indefinidamente.
+    Al llegar a MAX_LOGIN_ATTEMPTS bloquea la IP BLOCK_DURATION_MINUTES minutos.
+    """
+    now = timezone.now()
+    attempt, _ = LoginAttempt.objects.get_or_create(
+        ip_address=ip,
+        defaults={"last_attempt": now, "attempts_count": 0},
+    )
+
+    # Si el bloqueo previo ya expiró, reiniciamos para no acumular indefinidamente
+    if attempt.blocked_until and attempt.blocked_until <= now:
+        attempt.attempts_count = 0
+        attempt.blocked_until = None
+
+    attempt.attempts_count += 1
+    attempt.last_attempt = now
+
+    if attempt.attempts_count >= MAX_LOGIN_ATTEMPTS:
+        attempt.blocked_until = now + timedelta(minutes=BLOCK_DURATION_MINUTES)
+
+    attempt.save(update_fields=["attempts_count", "last_attempt", "blocked_until"])
 
 
 def ping(request):
@@ -51,30 +96,66 @@ def ping(request):
 
 class LoginView(APIView):
     """
-    Endpoint de login: valida credenciales y emite tokens JWT.
+    POST /api/v1/auth/login/
 
-    Flujo completo:
-    1. Valida email, contraseña y reCAPTCHA (anti-bots).
-    2. Si todo es correcto, genera dos tokens JWT:
-       - access token (60 min): va en el body JSON. El frontend lo
-         guarda en memoria y lo incluye en el header Authorization.
-       - refresh token (7 días): va en cookie HttpOnly. El browser
-         lo envía automáticamente, protegido contra robo por XSS.
+    Valida credenciales y emite tokens JWT. Incluye protección contra
+    ataques de fuerza bruta: bloquea la IP 15 minutos tras 5 intentos
+    fallidos consecutivos.
+
+    Tokens emitidos:
+      - access (60 min): va en el body JSON; el frontend lo guarda en
+        memoria y lo incluye en el header Authorization.
+      - refresh (7 días): va en cookie HttpOnly, protegido contra XSS.
     """
 
     permission_classes = [AllowAny]
 
     def post(self, request):
         """
-        Procesa el intento de login y emite los tokens JWT.
-        """
-        serializer = LoginSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        Procesa el intento de login con protección de fuerza bruta.
 
-        # El LoginSerializer.validate() retorna el objeto User completo
+        Retorna:
+            200 con {access, user} si el login es exitoso.
+            400 si el CAPTCHA falla o la cuenta no está verificada.
+            401 si las credenciales son incorrectas.
+            429 si la IP está bloqueada por demasiados intentos fallidos.
+        """
+        ip = _get_client_ip(request)
+
+        # Paso 1 — verificar bloqueo activo para esta IP
+        attempt = LoginAttempt.objects.filter(ip_address=ip).first()
+        if attempt and attempt.is_blocked:
+            segundos = int((attempt.blocked_until - timezone.now()).total_seconds())
+            response = Response(
+                {
+                    "detail": (
+                        f"Demasiados intentos fallidos. "
+                        f"Intenta de nuevo en {BLOCK_DURATION_MINUTES} minutos."
+                    )
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+            # Retry-After es el header HTTP estándar para este caso
+            response["Retry-After"] = str(segundos)
+            return response
+
+        # Paso 2 — validar credenciales sin raise_exception para poder
+        # registrar el intento fallido antes de retornar el error
+        serializer = LoginSerializer(data=request.data)
+        if not serializer.is_valid():
+            # non_field_errors = error de credenciales (de validate())
+            # Errores en campos específicos son de formato, no de auth
+            if "non_field_errors" in serializer.errors:
+                _register_failed_attempt(ip)
+            return Response(
+                {"detail": "Credenciales incorrectas o cuenta inactiva."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        # LoginSerializer.validate() retorna el objeto User si es exitoso
         user = serializer.validated_data
 
-        # Validación limpia de reCAPTCHA heredada de main
+        # Paso 3 — validar reCAPTCHA
         recaptcha_token = request.data.get("recaptcha_token")
         if not verify_recaptcha(recaptcha_token, request.META.get("REMOTE_ADDR")):
             return Response(
@@ -82,14 +163,16 @@ class LoginView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Bloqueo de seguridad: cuentas sin verificar no loguean
+        # Paso 4 — cuentas no verificadas no pueden iniciar sesión
         if not user.is_verified:
             return Response(
                 {"detail": "Cuenta no verificada. Revisa tu correo electrónico."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Generación de tokens JWT
+        # Paso 5 — login exitoso: limpiar historial de intentos de esta IP
+        LoginAttempt.objects.filter(ip_address=ip).delete()
+
         refresh = RefreshToken.for_user(user)
         data = {
             "access": str(refresh.access_token),
@@ -397,6 +480,8 @@ class UserCreateView(APIView):
             400: datos inválidos o reCAPTCHA fallido.
             403: el usuario autenticado no tiene rol Director/Admin.
         """
+        from .serializers import UserCreateSerializer  # noqa: PLC0415
+
         serializer = UserCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 

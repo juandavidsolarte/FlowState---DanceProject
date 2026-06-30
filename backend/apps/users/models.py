@@ -88,3 +88,35 @@ class User(AbstractBaseUser, PermissionsMixin):
     def is_profesor(self):
         """True si el usuario tiene rol Profesor."""
         return self.role == self.Role.PROFESOR
+
+
+class LoginAttempt(models.Model):
+    """
+    Registra intentos fallidos de login por IP para prevenir fuerza bruta.
+
+    Al acumular MAX_LOGIN_ATTEMPTS intentos, la IP queda bloqueada
+    durante BLOCK_DURATION_MINUTES. El registro se elimina cuando el
+    login es exitoso desde esa IP.
+    """
+
+    # max_length=45 soporta IPv4, IPv6 y la variante IPv4-mapeada-en-IPv6
+    ip_address = models.CharField(max_length=45, unique=True)
+    attempts_count = models.IntegerField(default=0)  # Intentos fallidos acumulados
+    last_attempt = models.DateTimeField()  # Timestamp del último intento fallido
+    blocked_until = models.DateTimeField(
+        null=True, blank=True
+    )  # Nulo = no bloqueada; se setea al llegar al límite de intentos
+
+    class Meta:
+        verbose_name = "Intento de Login"
+        verbose_name_plural = "Intentos de Login"
+
+    def __str__(self):
+        return f"{self.ip_address} — {self.attempts_count} intento(s)"
+
+    @property
+    def is_blocked(self):
+        """True si la IP está dentro del período de bloqueo activo."""
+        from django.utils.timezone import now
+
+        return bool(self.blocked_until and self.blocked_until > now())
