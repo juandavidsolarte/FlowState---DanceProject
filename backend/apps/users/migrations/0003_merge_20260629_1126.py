@@ -6,9 +6,8 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('users', '0002_registration_verification_fields'),
-        ('users', '0002_rename_avatar_to_avatar_url'),
+        ("users", "0002_registration_verification_fields"),
+        ("users", "0002_rename_avatar_to_avatar_url"),
     ]
 
-    operations = [
-    ]
+    operations = []

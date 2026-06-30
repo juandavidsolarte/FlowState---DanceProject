@@ -40,9 +40,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     date_of_birth = models.DateField(null=True, blank=True)
     country = models.CharField(max_length=100, blank=True)
     phone = models.CharField(max_length=20, blank=True)
-    role = models.CharField(
-        max_length=20, choices=Role.choices, default=Role.CLIENTE
-    )
+    role = models.CharField(max_length=20, choices=Role.choices, default=Role.CLIENTE)
 
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
@@ -50,12 +48,14 @@ class User(AbstractBaseUser, PermissionsMixin):
     date_joined = models.DateTimeField(default=timezone.now)
     last_login = models.DateTimeField(null=True, blank=True)
 
-    # URL pública del avatar en Supabase (Tomado de la rama feature/US-003 por compatibilidad con la migración)
+    # URL pública del avatar en Supabase (Tomado de la rama feature/US-003 por compatibilidad con la migración)  # noqa: E501
     avatar_url = models.CharField(max_length=500, null=True, blank=True)
 
     # Campos de verificación avanzados (Mantenidos y rescatados de tu Main original)
     email_verified_at = models.DateTimeField(null=True, blank=True)
-    verification_token = models.UUIDField(null=True, blank=True, unique=True, db_index=True)
+    verification_token = models.UUIDField(
+        null=True, blank=True, unique=True, db_index=True
+    )
     verification_token_created_at = models.DateTimeField(null=True, blank=True)
 
     objects = UserManager()
