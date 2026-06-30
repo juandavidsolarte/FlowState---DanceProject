@@ -83,7 +83,16 @@ export default function Register() {
   const passwordError = useMemo(() => passwordStrength(form.password), [form.password]);
 
   const onChange = (event) => {
+
+    console.log("Se ejecutó onChange");
+
+    console.log("name:", event.target.name);
+    console.log("type:", event.target.type);
+    console.log("checked:", event.target.checked);
+    console.log("value:", event.target.value);
+
     const { name, value, type, checked } = event.target;
+
     setForm((current) => ({
       ...current,
       [name]: type === "checkbox" ? checked : value,
@@ -127,56 +136,169 @@ export default function Register() {
     return nextErrors;
   };
 
+  // Función que se ejecuta cuando el usuario presiona el botón "Crear cuenta"
   const submitRegistration = async (event) => {
+
+    // Evita que el formulario recargue la página
     event.preventDefault();
+
+    console.log("Estado actual del formulario:");
+    console.log(form);
+    console.log("accepted =", form.accepted);
+
+
+    console.log("=====================================");
+    console.log("1. Se hizo clic en el botón Registrar");
+    console.log("=====================================");
+
+    // Limpia cualquier mensaje anterior
     setServerMessage("");
 
+    // Ejecuta todas las validaciones del formulario
     const validationErrors = validate();
-    setErrors(validationErrors);
-    if (Object.keys(validationErrors).length > 0) return;
 
-    const names = splitFullName(form.full_name);
-    if (!names) {
-      setErrors((current) => ({ ...current, full_name: "Incluye nombre y apellido." }));
+    console.log("2. Resultado de la validación:");
+    console.log(validationErrors);
+
+    // Guarda los errores para mostrarlos en pantalla
+    setErrors(validationErrors);
+
+    // Si existe al menos un error NO continúa con el registro
+    if (Object.keys(validationErrors).length > 0) {
+
+      console.log("3. El formulario tiene errores.");
+      console.log("No se enviará ninguna petición al backend.");
+
       return;
     }
 
+    console.log("3. Validaciones superadas.");
+
+    // Divide el nombre completo en nombre y apellido
+    const names = splitFullName(form.full_name);
+
+    console.log("4. Nombre separado:");
+    console.log(names);
+
+    // Seguridad adicional
+    if (!names) {
+
+      console.log("No se pudo separar nombre y apellido.");
+
+      setErrors((current) => ({
+        ...current,
+        full_name: "Incluye nombre y apellido."
+      }));
+
+      return;
+    }
+
+    // Activa el estado de carga
     setSubmitting(true);
+
+    // Construimos el objeto que enviaremos al backend
+    const payload = {
+
+      first_name: names.first_name,
+
+      last_name: names.last_name,
+
+      email: form.email,
+
+      password: form.password,
+
+      confirm_password: form.confirm_password,
+
+      date_of_birth: form.date_of_birth,
+
+      country: form.country,
+
+      age_confirmation: true,
+
+      terms_accepted: true,
+
+      recaptcha_token: captchaToken,
+
+    };
+
+    console.log("5. Payload que se enviará:");
+    console.log(payload);
+
     try {
-      await api.post("/auth/register/", {
-        first_name: names.first_name,
-        last_name: names.last_name,
-        email: form.email,
-        password: form.password,
-        confirm_password: form.confirm_password,
-        date_of_birth: form.date_of_birth,
-        country: form.country,
-        age_confirmation: true,
-        terms_accepted: true,
-        recaptcha_token: captchaToken,
-      });
+
+      console.log("6. Llamando al endpoint...");
+      console.log("POST /api/v1/auth/register/");
+
+      console.log("Captcha Token:");
+      console.log(captchaToken);
+
+      // Llamada al backend
+      const response = await api.post("/auth/register/", payload);
+
+      console.log("7. Respuesta del backend:");
+      console.log(response);
+
+      // Si llega aquí significa que el registro fue exitoso
       setIsSuccess(true);
-      setServerMessage("Te enviamos un correo de verificación. Revisa tu bandeja de entrada para activar tu cuenta.");
+
+      setServerMessage(
+        "Te enviamos un correo de verificación. Revisa tu bandeja de entrada para activar tu cuenta."
+      );
+
       setCaptchaToken("");
+
     } catch (error) {
+
+      console.log("=====================================");
+      console.log("ERROR EN EL REGISTRO");
+      console.log("=====================================");
+
+      console.log("Objeto Error:");
+      console.log(error);
+
+      console.log("Status:");
+      console.log(error.response?.status);
+
+      console.log("Respuesta del backend:");
+      console.log(error.response?.data);
+
       const detail = error.response?.data?.detail;
+
       const fieldErrors = error.response?.data;
+
       const nextErrors = {};
 
       if (detail) {
+
         nextErrors.form = detail;
+
       } else if (fieldErrors && typeof fieldErrors === "object") {
+
         Object.entries(fieldErrors).forEach(([key, value]) => {
-          nextErrors[key] = Array.isArray(value) ? value[0] : value;
+
+          nextErrors[key] = Array.isArray(value)
+            ? value[0]
+            : value;
+
         });
+
       } else {
-        nextErrors.form = "No pudimos completar el registro. Intenta nuevamente.";
+
+        nextErrors.form =
+          "No pudimos completar el registro.";
+
       }
 
       setErrors(nextErrors);
+
     } finally {
+
+      console.log("8. Finalizó submitRegistration");
+
       setSubmitting(false);
+
     }
+
   };
 
   const resendVerification = async (event) => {
@@ -444,7 +566,7 @@ export default function Register() {
                           name="resend_email"
                           type="email"
                           value={form.email}
-                          onChange={() => {}}
+                          onChange={() => { }}
                           readOnly
                           icon={Mail}
                           className="opacity-90"

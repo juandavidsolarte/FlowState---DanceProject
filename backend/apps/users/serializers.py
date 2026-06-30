@@ -86,49 +86,80 @@ class LoginSerializer(serializers.Serializer):
 class RegisterSerializer(serializers.ModelSerializer):
     """
     Valida y crea un nuevo usuario con rol Cliente.
-
-    Diseñado para el registro público. Nunca asigna roles de admin o
-    director desde este endpoint — eso se hace directamente en BD.
     """
 
-    # min_length=8 activa validación automática de DRF sin código extra
+    # Campos del modelo
     password = serializers.CharField(write_only=True, min_length=8)
+
+    # Campos que vienen del frontend pero no se guardan en la BD
+    confirm_password = serializers.CharField(write_only=True, required=True)
+    recaptcha_token = serializers.CharField(write_only=True, required=True)
+    age_confirmation = serializers.BooleanField(required=False)
+    terms_accepted = serializers.BooleanField(required=False)
 
     class Meta:
         model = User
 
-        fields = ['email', 'password', 'first_name', 'last_name', 'phone', 'role']
+        fields = [
+            "email",
+            "password",
+            "confirm_password",
+            "recaptcha_token",
+            "first_name",
+            "last_name",
+            "phone",
+            "role",
+            "date_of_birth",
+            "country",
+            "age_confirmation",
+            "terms_accepted",
+        ]
+
         extra_kwargs = {
-            'first_name': {'required': True, 'allow_blank': False},
-            'last_name': {'required': True, 'allow_blank': False},
+            "first_name": {"required": True, "allow_blank": False},
+            "last_name": {"required": True, "allow_blank": False},
+            "role": {"required": False},
         }
 
     def validate_role(self, value):
         if value not in [User.Role.CLIENTE, User.Role.PROFESOR]:
-            raise serializers.ValidationError("El registro solo está permitido para clientes y profesores.")
+            raise serializers.ValidationError(
+                "El registro solo está permitido para clientes y profesores."
+            )
         return value
 
+    def validate(self, attrs):
+        """
+        Validaciones del registro.
+        """
+
+        # Verificar que ambas contraseñas coincidan
+        if attrs["password"] != attrs["confirm_password"]:
+            raise serializers.ValidationError({
+                "confirm_password": "Las contraseñas no coinciden."
+            })
+
+        return attrs
+
     def create(self, validated_data):
-        """
-        Crea el usuario en BD con la contraseña hasheada.
 
-        create_user() del manager llama set_password() internamente,
-        así la contraseña nunca se guarda en texto plano en la BD.
+        # Eliminar campos que NO pertenecen al modelo
+        validated_data.pop("confirm_password", None)
+        validated_data.pop("recaptcha_token", None)
+        validated_data.pop("age_confirmation", None)
+        validated_data.pop("terms_accepted", None)
 
-        Args:
-            validated_data (dict): datos ya validados por DRF.
-
-        Returns:
-            User: instancia del nuevo usuario creado.
-        """
         user = User.objects.create_user(
-            email=validated_data['email'],
-            password=validated_data['password'],
-            first_name=validated_data.get('first_name', ''),
-            last_name=validated_data.get('last_name', ''),
-            phone=validated_data.get('phone', ''),
-            role=validated_data.get('role', User.Role.CLIENTE),
+            email=validated_data["email"],
+            password=validated_data["password"],
+            first_name=validated_data["first_name"],
+            last_name=validated_data["last_name"],
+            phone=validated_data.get("phone", ""),
+            date_of_birth=validated_data.get("date_of_birth"),
+            country=validated_data.get("country", ""),
+            role=validated_data.get("role", User.Role.CLIENTE),
         )
+
         return user
 
 class ChangePasswordSerializer(serializers.Serializer):

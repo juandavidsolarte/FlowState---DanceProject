@@ -9,6 +9,7 @@ const CheckboxField = ({ id, checked, onChange, label, error }) => {
       >
         <input
           id={id}
+          name={id}
           type="checkbox"
           checked={checked}
           onChange={onChange}
