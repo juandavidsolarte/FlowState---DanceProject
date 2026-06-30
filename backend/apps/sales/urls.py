@@ -1,8 +1,23 @@
 from django.urls import path
-from . import views
 
-app_name = 'sales'
+from .views import CompraDetailView, FacturaPDFView, PurchaseHistoryView
+
+app_name = "sales"
 
 urlpatterns = [
-    path('ping/', views.ping, name='ping'),
+    path(
+        "clientes/me/compras/",
+        PurchaseHistoryView.as_view(),
+        name="purchase-history",
+    ),
+    path(
+        "clientes/me/compras/<int:pk>/",
+        CompraDetailView.as_view(),
+        name="purchase-detail",
+    ),
+    path(
+        "clientes/me/compras/<int:pk>/factura/",
+        FacturaPDFView.as_view(),
+        name="purchase-invoice",
+    ),
 ]

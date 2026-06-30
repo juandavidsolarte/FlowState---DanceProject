@@ -1,3 +1,18 @@
 from django.contrib import admin
 
-# Register your models here.
+from .models import Coreografia, Video
+
+
+@admin.register(Coreografia)
+class CoreografiaAdmin(admin.ModelAdmin):
+    list_display = ("titulo", "profesor", "genero", "nivel", "precio", "estado")
+    list_filter = ("estado", "nivel", "genero")
+    search_fields = ("titulo", "descripcion")
+    raw_id_fields = ("profesor",)
+
+
+@admin.register(Video)
+class VideoAdmin(admin.ModelAdmin):
+    list_display = ("coreografia", "orden", "duracion_segundos")
+    list_filter = ("coreografia",)
+    ordering = ("coreografia", "orden")
