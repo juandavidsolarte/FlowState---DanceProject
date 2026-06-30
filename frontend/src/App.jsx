@@ -14,8 +14,9 @@ import VerifyEmail from "./pages/VerifyEmail";
 import Catalog from "./pages/Catalog";
 import DashboardLayout from "./layouts/DashboardLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
-import Equipo from "./pages/admin/Equipo"
-
+import Equipo from "./pages/admin/Equipo";
+import MiPerfil from "./pages/MiPerfil";
+import ClientLayout from "./layouts/ClientLayout";
 
 const HomePage = () => (
   <main>
@@ -37,10 +38,11 @@ const App = () => {
   }, [location.state]);
 
   const isDashboard = location.pathname.startsWith("/dashboard");
+  const isCliente = location.pathname.startsWith("/cliente");
 
   return (
     <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
-      {!isDashboard && <Navbar onLoginClick={openModal} />}
+      {!isDashboard && !isCliente && <Navbar onLoginClick={openModal} />}
       <Routes>
         {/* Rutas públicas */}
         <Route path="/" element={<HomePage />} />
@@ -52,14 +54,19 @@ const App = () => {
         <Route path="/about" element={<About />} />
         <Route path="/courses" element={<Courses />} />
 
-        {/* Rutas del dashboard */}
+        {/* Rutas del dashboard admin */}
         <Route path="/dashboard" element={<DashboardLayout />}>
-  <Route path="admin" element={<AdminDashboard />} />
-  <Route path="admin/equipo" element={<Equipo />} />
-</Route>
+          <Route path="admin" element={<AdminDashboard />} />
+          <Route path="admin/equipo" element={<Equipo />} />
+        </Route>
+
+        {/* Rutas del cliente */}
+        <Route path="/cliente" element={<ClientLayout />}>
+          <Route path="mi-perfil" element={<MiPerfil />} />
+        </Route>
       </Routes>
-      {!isDashboard && <Footer />}
-      {!isDashboard && <AuthModal isOpen={isModalOpen} closeModal={closeModal} />}
+      {!isDashboard && !isCliente && <Footer />}
+      {!isDashboard && !isCliente && <AuthModal isOpen={isModalOpen} closeModal={closeModal} />}
     </div>
   );
 };
