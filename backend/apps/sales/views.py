@@ -15,8 +15,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
-from reportlab.platypus import (Paragraph, SimpleDocTemplate, Spacer, Table,
-                                TableStyle)
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
@@ -105,8 +104,9 @@ class PurchaseHistoryView(APIView):
 
         genero = request.query_params.get("genero")
         if genero:
-            # iexact: "Salsa", "SALSA" y "salsa" producen el mismo resultado
-            queryset = queryset.filter(coreografia__genero__iexact=genero)
+            # iexact: "Salsa", "SALSA" y "salsa" producen el mismo resultado.
+            # Desde SCRUM-30 genero es FK a Genero, por eso se filtra por su nombre.
+            queryset = queryset.filter(coreografia__genero__nombre__iexact=genero)
 
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(queryset, request)
@@ -302,10 +302,12 @@ class FacturaPDFView(APIView):
             else "—"
         )
         cabecera = [["Descripción", "Género", "Nivel", "Precio"]]
+        # Desde SCRUM-30 genero es FK a Genero y puede ser None (SET_NULL)
+        genero_nombre = coreografia.genero.nombre if coreografia.genero else "—"
         fila = [
             [
                 Paragraph(coreografia.titulo, estilo_normal),
-                coreografia.genero,
+                genero_nombre,
                 coreografia.get_nivel_display(),
                 f"${compra.precio_pagado:,.2f}",
             ]

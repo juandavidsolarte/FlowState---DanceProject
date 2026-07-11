@@ -35,6 +35,9 @@ class CoreografiaSerializer(serializers.ModelSerializer):
     """
 
     videos = VideoSerializer(many=True, read_only=True)
+    # Desde SCRUM-30 genero es FK a Genero: exponemos el nombre como string
+    # plano para no romper el contrato existente con el frontend.
+    genero = serializers.StringRelatedField()
     # *_display: etiqueta legible del choice para mostrar en el frontend
     # (ej. "Avanzado" en vez del valor guardado en BD "avanzado")
     nivel_display = serializers.CharField(source="get_nivel_display", read_only=True)

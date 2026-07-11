@@ -10,6 +10,28 @@ from django.conf import settings
 from django.db import models
 
 
+class Genero(models.Model):
+    """
+    Catálogo controlado de géneros de baile (salsa, bachata, etc.).
+
+    Reemplaza el campo de texto libre que tenía Coreografia por una
+    relación FK, evitando duplicados por variaciones de escritura
+    (ej. "Salsa" vs "salsa" vs "SALSA").
+    """
+
+    nombre = models.CharField(max_length=100, unique=True)  # Ej. "Salsa", "Bachata"
+    descripcion = models.TextField(blank=True)  # Detalle opcional del género
+
+    class Meta:
+        db_table = "catalog_genero"
+        verbose_name = "Género"
+        verbose_name_plural = "Géneros"
+        ordering = ["nombre"]
+
+    def __str__(self):
+        return self.nombre
+
+
 class Coreografia(models.Model):
     """
     Producto principal del catálogo: una coreografía que los clientes pueden comprar.
@@ -41,9 +63,14 @@ class Coreografia(models.Model):
         blank=True,
         related_name="coreografias",
     )
-    genero = models.CharField(
-        max_length=100
-    )  # Texto libre: "salsa", "bachata", etc. Sin catálogo controlado
+    # SET_NULL: si se borra el género, la coreografía se conserva sin clasificar
+    genero = models.ForeignKey(
+        Genero,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="coreografias",
+    )
     nivel = models.CharField(
         max_length=20, choices=Nivel.choices, default=Nivel.PRINCIPIANTE
     )  # Determina la audiencia objetivo de la coreografía
