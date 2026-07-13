@@ -7,9 +7,11 @@ generación de factura PDF con ReportLab.
 """
 
 import io
+import random
 from datetime import datetime
 from decimal import Decimal
 
+from django.db import transaction
 from django.db.models import Prefetch
 from django.http import HttpResponse
 from django.utils import timezone
@@ -27,8 +29,12 @@ from rest_framework.views import APIView
 
 from apps.catalog.models import Coreografia
 
-from .models import Carrito, CarritoItem, Compra
-from .serializers import CarritoSerializer, CompraSerializer
+from .models import Carrito, CarritoItem, Compra, Orden, OrdenItem
+from .serializers import (CarritoSerializer, CheckoutResumenSerializer,
+                          CompraSerializer, OrdenSerializer)
+from .signals import checkout_exitoso
+
+IVA_PORCENTAJE = Decimal("0.19")  # IVA vigente en Colombia para servicios digitales
 
 
 class CompraPagination(PageNumberPagination):
@@ -638,3 +644,235 @@ class CarritoMergeView(APIView):
 
         carrito_usuario = _carrito_queryset().get(pk=carrito_usuario.pk)
         return Response(CarritoSerializer(carrito_usuario).data)
+
+
+class CheckoutIniciarView(APIView):
+    """
+    POST /api/v1/checkout/iniciar/
+
+    Valida el carrito del cliente autenticado y retorna un resumen
+    del checkout: items, subtotal, IVA y total a pagar.
+    No crea ninguna orden aún — es solo una vista previa para que el
+    frontend muestre el paso de confirmación antes del pago.
+
+    Requiere JWT. Retorna 400 si el carrito está vacío.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """
+        Retorna el resumen del carrito o 400 si el carrito está vacío o no existe.
+
+        Verifica además que todas las coreografías del carrito siguen publicadas,
+        por si el catálogo cambió entre que el cliente agregó items y llega al checkout.
+        """
+        carrito = _carrito_queryset().filter(cliente=request.user).first()
+
+        if carrito is None or not carrito.items.exists():
+            return Response(
+                {"error": "El carrito está vacío."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Verificar que todos los items del carrito siguen disponibles
+        items = list(carrito.items.all())
+        ids_no_publicados = [
+            item.coreografia_id
+            for item in items
+            if item.coreografia.estado != Coreografia.Estado.PUBLICADO
+        ]
+        if ids_no_publicados:
+            return Response(
+                {
+                    "error": (
+                        "Algunas coreografías del carrito ya no están disponibles. "
+                        "Por favor revisa tu carrito."
+                    ),
+                    "coreografias_no_disponibles": ids_no_publicados,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        subtotal = sum((item.coreografia.precio for item in items), Decimal("0.00"))
+        iva_monto = (subtotal * IVA_PORCENTAJE).quantize(Decimal("0.01"))
+        total = subtotal + iva_monto
+
+        data = {
+            # Se pasan los CarritoItem "crudos" (no ya serializados): el campo
+            # `items = CarritoItemSerializer(many=True)` de CheckoutResumenSerializer
+            # necesita instancias reales para resolver sus fuentes "coreografia.*".
+            # Pasar aquí `.data` (ya serializado) haría que esas fuentes no
+            # resuelvan sobre un dict plano y DRF las omitiría en silencio.
+            "items": items,
+            "subtotal": str(subtotal),
+            "iva_monto": str(iva_monto),
+            "total": str(total),
+            "metodos_disponibles": [
+                Orden.MetodoPago.PSE,
+                Orden.MetodoPago.TARJETA,
+            ],
+        }
+        serializer = CheckoutResumenSerializer(data)
+        return Response(serializer.data)
+
+
+TASA_EXITO_PAGO = Decimal("0.90")  # 90% de probabilidad de éxito en la simulación
+
+
+class CheckoutProcesarView(APIView):
+    """
+    POST /api/v1/checkout/procesar/
+
+    Procesa el pago simulado del carrito del cliente autenticado.
+    Si el pago simulado es exitoso (90% de probabilidad):
+      - Crea una Orden con sus OrdenItems en una transacción atómica
+      - Crea una Compra por cada coreografía (para mantener el historial)
+      - Elimina el carrito
+      - Dispara la señal checkout_exitoso (email simulado)
+      - Retorna 201 con los datos de la orden
+
+    Si el pago es rechazado (10% de probabilidad):
+      - Retorna 402 con mensaje de error
+      - El carrito permanece intacto para permitir reintento
+
+    Idempotencia: si se envía la misma idempotency_key de una orden ya
+    completada, retorna 200 con la orden existente sin reprocesar.
+
+    Body requerido:
+      - metodo_pago: "pse" | "tarjeta"
+      - idempotency_key: string único (UUID recomendado, generado por el frontend)
+      - datos_facturacion: objeto opcional con datos del pagador
+
+    Requiere JWT.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """
+        Valida el request, simula el pago y crea la orden si es exitoso.
+
+        Retorna 400 si faltan campos, 402 si el pago es rechazado,
+        200 si la idempotency_key ya fue procesada, o 201 en éxito nuevo.
+        """
+        metodo_pago = request.data.get("metodo_pago")
+        idempotency_key = request.data.get("idempotency_key")
+        datos_facturacion = request.data.get("datos_facturacion")
+
+        # Validar campos requeridos
+        if not metodo_pago:
+            return Response(
+                {"error": "metodo_pago es requerido (pse o tarjeta)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if metodo_pago not in [Orden.MetodoPago.PSE, Orden.MetodoPago.TARJETA]:
+            return Response(
+                {"error": "metodo_pago debe ser 'pse' o 'tarjeta'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not idempotency_key:
+            return Response(
+                {"error": "idempotency_key es requerida."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Idempotencia: retornar la orden existente si ya fue procesada
+        orden_existente = (
+            Orden.objects.filter(
+                idempotency_key=idempotency_key,
+                cliente=request.user,
+                estado=Orden.Estado.COMPLETADA,
+            )
+            .prefetch_related("items__coreografia")
+            .first()
+        )
+        if orden_existente:
+            return Response(
+                OrdenSerializer(orden_existente).data,
+                status=status.HTTP_200_OK,
+            )
+
+        # Verificar que el carrito existe y tiene items
+        carrito = _carrito_queryset().filter(cliente=request.user).first()
+        if carrito is None or not carrito.items.exists():
+            return Response(
+                {"error": "El carrito está vacío."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        items = list(carrito.items.all())
+
+        # Calcular totales
+        subtotal = sum((item.coreografia.precio for item in items), Decimal("0.00"))
+        iva_monto = (subtotal * IVA_PORCENTAJE).quantize(Decimal("0.01"))
+        total = subtotal + iva_monto
+
+        # Simulación aleatoria: 90% éxito, 10% rechazo
+        pago_exitoso = random.random() < float(TASA_EXITO_PAGO)
+
+        if not pago_exitoso:
+            return Response(
+                {
+                    "error": (
+                        "El pago fue rechazado por el banco. "
+                        "Por favor intenta de nuevo o usa otro método de pago."
+                    ),
+                    "codigo": "PAGO_RECHAZADO",
+                },
+                status=status.HTTP_402_PAYMENT_REQUIRED,
+            )
+
+        # Pago exitoso: crear orden, items y compras en una sola transacción atómica
+        # Si algo falla en mitad del proceso, todo el bloque se revierte
+        # (ni la orden, ni los items, ni las compras quedarán a medias)
+        with transaction.atomic():
+            orden = Orden.objects.create(
+                cliente=request.user,
+                total=total,
+                estado=Orden.Estado.COMPLETADA,
+                metodo_pago=metodo_pago,
+                idempotency_key=idempotency_key,
+                datos_facturacion=datos_facturacion,
+            )
+
+            # Determinar el método equivalente en Compra (PSE → transferencia)
+            metodo_compra = (
+                Compra.MetodoPago.TARJETA
+                if metodo_pago == Orden.MetodoPago.TARJETA
+                else Compra.MetodoPago.TRANSFERENCIA
+            )
+
+            for item in items:
+                OrdenItem.objects.create(
+                    orden=orden,
+                    coreografia=item.coreografia,
+                    precio_pagado=item.coreografia.precio,
+                )
+                # Se crea una Compra por cada coreografía para que
+                # el historial de compras existente siga funcionando
+                # sin cambios (GET /api/v1/clientes/me/compras/)
+                Compra.objects.create(
+                    cliente=request.user,
+                    coreografia=item.coreografia,
+                    precio_pagado=item.coreografia.precio,
+                    estado=Compra.Estado.ACTIVA,
+                    metodo_pago=metodo_compra,
+                )
+
+            # Eliminar el carrito una vez procesado el pago
+            carrito.delete()
+
+        # Disparar señal post-checkout fuera de la transacción
+        # para no bloquear el commit si el handler falla
+        checkout_exitoso.send(
+            sender=Orden,
+            orden=orden,
+            request=request,
+        )
+
+        orden = Orden.objects.prefetch_related("items__coreografia").get(pk=orden.pk)
+        return Response(
+            OrdenSerializer(orden).data,
+            status=status.HTTP_201_CREATED,
+        )

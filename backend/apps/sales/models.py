@@ -136,3 +136,86 @@ class CarritoItem(models.Model):
 
     def __str__(self):
         return f"{self.coreografia.titulo} en carrito #{self.carrito_id}"
+
+
+class Orden(models.Model):
+    """
+    Registro de una orden de pago generada en el checkout.
+
+    Una Orden agrupa todos los items del carrito en un solo intento de pago.
+    Solo se persiste si el pago fue exitoso (estado=COMPLETADA). La
+    idempotency_key evita doble cobro si el cliente envía la misma solicitud
+    dos veces (ej. por doble clic o timeout de red).
+    """
+
+    class Estado(models.TextChoices):
+        COMPLETADA = "completada", "Completada"  # Pago simulado con éxito
+        FALLIDA = (
+            "fallida",
+            "Fallida",
+        )  # Pago simulado rechazado (no se usa actualmente — solo se persiste si es exitosa)  # noqa: E501
+
+    class MetodoPago(models.TextChoices):
+        PSE = "pse", "PSE (Débito bancario)"
+        TARJETA = "tarjeta", "Tarjeta de crédito/débito"
+
+    cliente = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="ordenes",
+    )  # Usuario autenticado que realizó el pago
+    total = models.DecimalField(
+        max_digits=10, decimal_places=2
+    )  # Total final con IVA incluido  # noqa: E501
+    estado = models.CharField(
+        max_length=20, choices=Estado.choices, default=Estado.COMPLETADA
+    )  # Estado del pago simulado
+    metodo_pago = models.CharField(
+        max_length=20, choices=MetodoPago.choices
+    )  # Método de pago elegido por el cliente
+    idempotency_key = models.CharField(
+        max_length=100, unique=True
+    )  # Clave única del cliente para evitar doble cobro
+    datos_facturacion = models.JSONField(
+        null=True, blank=True
+    )  # Datos de facturación opcionales (nombre, cedula, dirección)
+    creado_en = models.DateTimeField(auto_now_add=True)  # Timestamp de la orden
+
+    class Meta:
+        db_table = "sales_orden"
+        verbose_name = "Orden"
+        verbose_name_plural = "Órdenes"
+        ordering = ["-creado_en"]
+
+    def __str__(self):
+        return f"Orden #{self.pk} — {self.cliente.email} — ${self.total}"
+
+
+class OrdenItem(models.Model):
+    """
+    Un ítem dentro de una orden: la coreografía comprada y su precio al
+    momento de la compra.
+
+    Se crea uno por cada CarritoItem procesado en el checkout exitoso.
+    El precio_pagado se captura en el momento del checkout para no
+    verse afectado por cambios futuros en el precio del catálogo.
+    """
+
+    orden = models.ForeignKey(
+        Orden, on_delete=models.CASCADE, related_name="items"
+    )  # CASCADE: si se elimina la orden, sus items desaparecen
+    coreografia = models.ForeignKey(
+        Coreografia, on_delete=models.PROTECT, related_name="orden_items"
+    )  # PROTECT: no se puede eliminar una coreografía que fue comprada
+    precio_pagado = models.DecimalField(
+        max_digits=10, decimal_places=2
+    )  # Precio al momento del checkout (no varía con cambios futuros al catálogo)
+
+    class Meta:
+        db_table = "sales_orden_item"
+        verbose_name = "Ítem de orden"
+        verbose_name_plural = "Ítems de orden"
+        unique_together = [("orden", "coreografia")]
+
+    def __str__(self):
+        return f"{self.coreografia.titulo} en orden #{self.orden_id}"

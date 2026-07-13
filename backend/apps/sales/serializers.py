@@ -14,7 +14,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from apps.catalog.models import Coreografia, Video
-from apps.sales.models import Carrito, CarritoItem, Compra
+from apps.sales.models import Carrito, CarritoItem, Compra, Orden, OrdenItem
 
 IVA_PORCENTAJE = Decimal("0.19")  # IVA vigente en Colombia para servicios digitales
 
@@ -164,3 +164,66 @@ class CarritoSerializer(serializers.ModelSerializer):
     def get_total(self, obj):
         """Subtotal + IVA: el monto final a pagar en el checkout."""
         return str(self._calcular_subtotal(obj) + self._calcular_iva(obj))
+
+
+class OrdenItemResumenSerializer(serializers.ModelSerializer):
+    """
+    Serializa un ítem de orden para mostrar en el resumen post-checkout.
+    Incluye título y thumbnail de la coreografía para que el frontend
+    arme la página de éxito sin consultar el catálogo por separado.
+    """
+
+    coreografia_id = serializers.IntegerField(source="coreografia.id", read_only=True)
+    titulo = serializers.CharField(source="coreografia.titulo", read_only=True)
+    thumbnail_url = serializers.CharField(
+        source="coreografia.thumbnail_url", read_only=True
+    )
+
+    class Meta:
+        model = OrdenItem
+        fields = ["id", "coreografia_id", "titulo", "thumbnail_url", "precio_pagado"]
+
+
+class OrdenSerializer(serializers.ModelSerializer):
+    """
+    Serializa una orden completada para retornarla en la respuesta del
+    checkout exitoso. Incluye los items, el total pagado, el método y
+    el estado.
+    """
+
+    items = OrdenItemResumenSerializer(many=True, read_only=True)
+    metodo_pago_display = serializers.CharField(
+        source="get_metodo_pago_display", read_only=True
+    )
+    total = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Orden
+        fields = [
+            "id",
+            "total",
+            "estado",
+            "metodo_pago",
+            "metodo_pago_display",
+            "idempotency_key",
+            "creado_en",
+            "items",
+        ]
+
+    def get_total(self, obj):
+        # str() para mantener precisión monetaria al serializar Decimal
+        return str(obj.total)
+
+
+class CheckoutResumenSerializer(serializers.Serializer):
+    """
+    Serializa el resumen del carrito para mostrar antes de confirmar el pago.
+    Retornado por POST /api/v1/checkout/iniciar/.
+    No es un ModelSerializer porque calcula valores del carrito en memoria.
+    """
+
+    items = CarritoItemSerializer(many=True)
+    subtotal = serializers.CharField()  # str() para precisión decimal
+    iva_monto = serializers.CharField()
+    total = serializers.CharField()
+    metodos_disponibles = serializers.ListField(child=serializers.CharField())
