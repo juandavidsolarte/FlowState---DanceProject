@@ -9,10 +9,14 @@ La jerarquía de anidamiento es:
 Todos son de solo lectura: el historial se consulta, no se modifica desde esta API.
 """
 
+from decimal import Decimal
+
 from rest_framework import serializers
 
 from apps.catalog.models import Coreografia, Video
-from apps.sales.models import Compra
+from apps.sales.models import Carrito, CarritoItem, Compra
+
+IVA_PORCENTAJE = Decimal("0.19")  # IVA vigente en Colombia para servicios digitales
 
 
 class VideoSerializer(serializers.ModelSerializer):
@@ -89,3 +93,74 @@ class CompraSerializer(serializers.ModelSerializer):
             "metodo_pago_display",
             "coreografia",
         ]
+
+
+class CarritoItemSerializer(serializers.ModelSerializer):
+    """
+    Serializa un ítem del carrito junto a los datos públicos de su
+    coreografía (los necesarios para mostrar la tarjeta en el carrito
+    del frontend: título, precio, miniatura y género).
+    """
+
+    coreografia_id = serializers.IntegerField(source="coreografia.id", read_only=True)
+    titulo = serializers.CharField(source="coreografia.titulo", read_only=True)
+    precio = serializers.DecimalField(
+        source="coreografia.precio", max_digits=10, decimal_places=2, read_only=True
+    )
+    thumbnail_url = serializers.CharField(
+        source="coreografia.thumbnail_url", read_only=True
+    )
+    genero = serializers.StringRelatedField(source="coreografia.genero")
+
+    class Meta:
+        model = CarritoItem
+        fields = [
+            "id",
+            "coreografia_id",
+            "titulo",
+            "precio",
+            "thumbnail_url",
+            "genero",
+            "agregado_en",
+        ]
+
+
+class CarritoSerializer(serializers.ModelSerializer):
+    """
+    Serializa el carrito completo: sus items más los totales calculados.
+
+    Los items deben venir precargados con select_related/prefetch_related
+    desde la vista (ver apps.sales.views._carrito_queryset) para que
+    calcular subtotal/iva/total no dispare queries adicionales.
+    """
+
+    items = CarritoItemSerializer(many=True, read_only=True)
+    subtotal = serializers.SerializerMethodField()
+    iva_monto = serializers.SerializerMethodField()
+    total = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Carrito
+        fields = ["id", "items", "subtotal", "iva_monto", "total"]
+
+    def _calcular_subtotal(self, obj):
+        """Suma el precio de todas las coreografías en el carrito."""
+        return sum(
+            (item.coreografia.precio for item in obj.items.all()), Decimal("0.00")
+        )
+
+    def _calcular_iva(self, obj):
+        """Calcula el IVA (19%) sobre el subtotal."""
+        return (self._calcular_subtotal(obj) * IVA_PORCENTAJE).quantize(Decimal("0.01"))
+
+    def get_subtotal(self, obj):
+        # str(): SerializerMethodField no pasa por DecimalField.to_representation,
+        # así que sin esto se serializaría como float y perdería precisión monetaria.
+        return str(self._calcular_subtotal(obj))
+
+    def get_iva_monto(self, obj):
+        return str(self._calcular_iva(obj))
+
+    def get_total(self, obj):
+        """Subtotal + IVA: el monto final a pagar en el checkout."""
+        return str(self._calcular_subtotal(obj) + self._calcular_iva(obj))

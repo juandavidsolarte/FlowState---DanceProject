@@ -66,3 +66,73 @@ class Compra(models.Model):
 
     def __str__(self):
         return f"Compra #{self.pk} — {self.cliente.email} → {self.coreografia.titulo}"
+
+
+class Carrito(models.Model):
+    """
+    Carrito de compras de un cliente autenticado o de un visitante anónimo.
+
+    Puede pertenecer a un usuario logueado (`cliente`) o identificarse solo
+    por `session_id` (visitante anónimo antes de iniciar sesión). Nunca
+    ambos a la vez en la práctica: al hacer login se hace merge y el
+    carrito anónimo se elimina (ver CarritoMergeView).
+    """
+
+    # OneToOneField (en vez de ForeignKey) garantiza un solo carrito por
+    # cliente a nivel de base de datos. null=True permite carritos
+    # anónimos, que siempre tienen cliente=None.
+    cliente = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="carrito",
+    )
+    # Igual que cliente: unique=True asegura un solo carrito activo por
+    # sesión anónima. Se envía desde el frontend vía header X-Session-ID.
+    session_id = models.CharField(max_length=100, null=True, blank=True, unique=True)
+    creado_en = models.DateTimeField(
+        auto_now_add=True
+    )  # Momento de creación del carrito
+    actualizado_en = models.DateTimeField(
+        auto_now=True
+    )  # Se actualiza cada vez que se agrega/elimina un item
+
+    class Meta:
+        db_table = "sales_carrito"
+        verbose_name = "Carrito"
+        verbose_name_plural = "Carritos"
+        ordering = ["-actualizado_en"]
+
+    def __str__(self):
+        propietario = (
+            self.cliente.email if self.cliente else f"sesión {self.session_id}"
+        )
+        return f"Carrito #{self.pk} — {propietario}"
+
+
+class CarritoItem(models.Model):
+    """
+    Una coreografía agregada a un carrito.
+
+    unique_together evita que la misma coreografía se agregue dos veces
+    al mismo carrito (la vista de creación también valida esto de forma
+    explícita para poder retornar un mensaje de error claro).
+    """
+
+    # CASCADE: si se elimina el carrito, sus items desaparecen con él
+    carrito = models.ForeignKey(Carrito, on_delete=models.CASCADE, related_name="items")
+    # CASCADE: si se elimina la coreografía del catálogo, ya no tiene sentido
+    # mantenerla en carritos pendientes
+    coreografia = models.ForeignKey(Coreografia, on_delete=models.CASCADE)
+    agregado_en = models.DateTimeField(auto_now_add=True)  # Momento en que se agregó
+
+    class Meta:
+        db_table = "sales_carrito_item"
+        verbose_name = "Ítem de carrito"
+        verbose_name_plural = "Ítems de carrito"
+        unique_together = [("carrito", "coreografia")]
+        ordering = ["agregado_en"]
+
+    def __str__(self):
+        return f"{self.coreografia.titulo} en carrito #{self.carrito_id}"
