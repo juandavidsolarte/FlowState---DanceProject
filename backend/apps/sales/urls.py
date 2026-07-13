@@ -1,8 +1,9 @@
 from django.urls import path
 
 from .views import (CarritoDetailView, CarritoItemCreateView,
-                    CarritoItemDeleteView, CarritoMergeView, CompraDetailView,
-                    FacturaPDFView, PurchaseHistoryView)
+                    CarritoItemDeleteView, CarritoMergeView,
+                    CheckoutIniciarView, CheckoutProcesarView,
+                    CompraDetailView, FacturaPDFView, PurchaseHistoryView)
 
 app_name = "sales"
 
@@ -30,4 +31,8 @@ urlpatterns = [
         name="carrito-item-delete",
     ),
     path("carrito/merge/", CarritoMergeView.as_view(), name="carrito-merge"),
+    path("checkout/iniciar/", CheckoutIniciarView.as_view(), name="checkout-iniciar"),
+    path(
+        "checkout/procesar/", CheckoutProcesarView.as_view(), name="checkout-procesar"
+    ),
 ]
