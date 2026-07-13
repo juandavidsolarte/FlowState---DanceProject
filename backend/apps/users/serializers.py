@@ -16,6 +16,7 @@ from rest_framework import serializers
 
 from .models import User
 from django.contrib.auth.password_validation import validate_password
+from .services import verify_recaptcha
 
 class UserSerializer(serializers.ModelSerializer):
     """
@@ -72,6 +73,11 @@ class LoginSerializer(serializers.Serializer):
             ValidationError: si las credenciales son incorrectas o
                 la cuenta está inactiva.
         """
+        # 1. Validar reCAPTCHA primero
+        # Esta función internamente ya verifica si settings.DEBUG es True
+        if not verify_recaptcha(data.get("recaptcha_token")):
+            raise serializers.ValidationError("Error de verificación humana (reCAPTCHA).")
+
         user = authenticate(
             email=data.get("email"),
             password=data.get("password"),
