@@ -109,3 +109,19 @@ class SupabaseService:
         # en el atributo src de la etiqueta <img>.
         public_url = client.storage.from_(bucket).get_public_url(unique_name)
         return public_url
+
+# apps/users/services.py
+from django.conf import settings
+import requests
+
+def verify_recaptcha(recaptcha_response):
+    #   DEVOLVER TRUE SI ES DEV
+    if settings.DEBUG: 
+        return True
+    data = {
+        'secret': settings.RECAPTCHA_SECRET_KEY,
+        'response': recaptcha_response
+    }
+    r = requests.post('https://www.google.com/recaptcha/api/siteverify', data=data)
+    result = r.json()
+    return result.get('success', False)
