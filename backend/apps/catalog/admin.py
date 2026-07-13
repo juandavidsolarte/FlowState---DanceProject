@@ -1,6 +1,12 @@
 from django.contrib import admin
 
-from .models import Coreografia, Video
+from .models import Coreografia, Genero, Video
+
+
+@admin.register(Genero)
+class GeneroAdmin(admin.ModelAdmin):
+    list_display = ("nombre",)
+    search_fields = ("nombre",)
 
 
 @admin.register(Coreografia)

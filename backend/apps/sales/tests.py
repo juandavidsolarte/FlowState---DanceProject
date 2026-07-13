@@ -19,7 +19,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from apps.catalog.models import Coreografia, Video
+from apps.catalog.models import Coreografia, Genero, Video
 from apps.sales.models import Compra
 from apps.users.models import User
 
@@ -31,9 +31,11 @@ def get_tokens_for_user(user):
 
 
 def crear_coreografia(titulo="Salsa Básica", genero="salsa", precio="50.00"):
+    # Desde SCRUM-30, genero es FK a Genero en vez de texto libre.
+    genero_obj, _ = Genero.objects.get_or_create(nombre=genero)
     return Coreografia.objects.create(
         titulo=titulo,
-        genero=genero,
+        genero=genero_obj,
         nivel=Coreografia.Nivel.PRINCIPIANTE,
         precio=Decimal(precio),
         estado=Coreografia.Estado.PUBLICADO,
