@@ -89,6 +89,9 @@ class Coreografia(models.Model):
     duracion_segundos = models.PositiveIntegerField(
         default=0
     )  # Duración total del video principal
+    preview_segundos = models.IntegerField(
+        default=30
+    )  # Segundos de preview gratuito para clientes que no compraron
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -97,6 +100,14 @@ class Coreografia(models.Model):
         verbose_name = "Coreografía"
         verbose_name_plural = "Coreografías"
         ordering = ["-created_at"]
+        # Índices para acelerar los filtros del catálogo público (SCRUM-31):
+        # listar por estado=publicado, y filtrar/ordenar por nivel, precio y género.
+        indexes = [
+            models.Index(fields=["estado"]),
+            models.Index(fields=["nivel"]),
+            models.Index(fields=["precio"]),
+            models.Index(fields=["genero"]),
+        ]
 
     def __str__(self):
         return f"{self.titulo} ({self.get_nivel_display()})"
