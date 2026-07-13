@@ -129,3 +129,45 @@ class CoreografiaWriteSerializer(serializers.ModelSerializer):
         if value <= 0:
             raise serializers.ValidationError("El precio debe ser mayor a 0.")
         return value
+
+
+class CatalogoClienteSerializer(serializers.ModelSerializer):
+    """
+    Serializa una coreografía para el catálogo público de clientes (SCRUM-31).
+
+    Solo expone campos seguros para mostrar en la tienda: nada de datos
+    internos como `profesor` o `estado`. Se usa en CatalogoListView y
+    CatalogoDetailView, ambas accesibles sin autenticación.
+    """
+
+    genero = serializers.StringRelatedField()  # Nombre del género en vez del id
+    ya_comprado = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Coreografia
+        fields = [
+            "id",
+            "titulo",
+            "descripcion",
+            "genero",
+            "nivel",
+            "precio",
+            "thumbnail_url",
+            "duracion_segundos",
+            "preview_segundos",
+            "ya_comprado",
+        ]
+
+    def get_ya_comprado(self, obj):
+        """
+        Indica si el usuario autenticado ya compró esta coreografía.
+
+        Retorna False (nunca error) si no hay usuario autenticado en el
+        request, para que el catálogo público funcione igual para
+        visitantes anónimos y clientes logueados.
+        """
+        request = self.context.get("request")
+        if request is None or not request.user.is_authenticated:
+            return False
+
+        return request.user.compras.filter(coreografia=obj).exists()
