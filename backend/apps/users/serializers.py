@@ -9,14 +9,13 @@ Este módulo define los serializers para login, registro, actualización
 de perfil y cambio de contraseña.
 """
 
-import re
-
 from django.contrib.auth import authenticate
+from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
 from .models import User
-from django.contrib.auth.password_validation import validate_password
 from .services import verify_recaptcha
+
 
 class UserSerializer(serializers.ModelSerializer):
     """
@@ -76,7 +75,9 @@ class LoginSerializer(serializers.Serializer):
         # 1. Validar reCAPTCHA primero
         # Esta función internamente ya verifica si settings.DEBUG es True
         if not verify_recaptcha(data.get("recaptcha_token")):
-            raise serializers.ValidationError("Error de verificación humana (reCAPTCHA).")
+            raise serializers.ValidationError(
+                "Error de verificación humana (reCAPTCHA)."
+            )
 
         user = authenticate(
             email=data.get("email"),
@@ -84,9 +85,7 @@ class LoginSerializer(serializers.Serializer):
         )
         if user and user.is_active:
             return user
-        raise serializers.ValidationError(
-            "Credenciales incorrectas o cuenta inactiva."
-        )
+        raise serializers.ValidationError("Credenciales incorrectas o cuenta inactiva.")
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -141,9 +140,9 @@ class RegisterSerializer(serializers.ModelSerializer):
 
         # Verificar que ambas contraseñas coincidan
         if attrs["password"] != attrs["confirm_password"]:
-            raise serializers.ValidationError({
-                "confirm_password": "Las contraseñas no coinciden."
-            })
+            raise serializers.ValidationError(
+                {"confirm_password": "Las contraseñas no coinciden."}
+            )
 
         return attrs
 
@@ -168,27 +167,31 @@ class RegisterSerializer(serializers.ModelSerializer):
 
         return user
 
+
 class ChangePasswordSerializer(serializers.Serializer):
     current_password = serializers.CharField(required=True, write_only=True)
     new_password = serializers.CharField(required=True, write_only=True)
 
     def validate_current_password(self, value):
-        user = self.context['request'].user
+        user = self.context["request"].user
         if not user.check_password(value):
             raise serializers.ValidationError("La contraseña actual es incorrecta.")
         return value
 
     def validate(self, data):
-        if data['current_password'] == data['new_password']:
+        if data["current_password"] == data["new_password"]:
             raise serializers.ValidationError(
-                {"new_password": "La nueva contraseña no puede ser igual a la anterior."}
+                {
+                    "new_password": "La nueva contraseña no puede ser igual a la anterior."  # noqa: E501
+                }
             )
-        
-        # Opcional: Ejecuta las validaciones de contraseña por defecto de Django (longitud, etc.)
-        user = self.context['request'].user
-        validate_password(data['new_password'], user=user)
-        
+
+        # Validaciones integradas de Django (longitud mínima, contraseñas comunes, etc.)
+        user = self.context["request"].user
+        validate_password(data["new_password"], user=user)
+
         return data
+
 
 class ResendVerificationSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
@@ -197,20 +200,75 @@ class ResendVerificationSerializer(serializers.Serializer):
         # Limpia espacios innecesarios
         return value.strip().lower()
 
-class UpdateProfileSerializer(serializers.ModelSerializer):
+
+class UserCreateSerializer(serializers.ModelSerializer):
+    """
+    Crea un usuario con rol Director o Administrador.
+
+    Usado en POST /api/v1/users/ (solo accesible para Director/Admin).
+    No recibe contraseña — se genera una temporal y se devuelve en la
+    respuesta. El usuario queda activo y verificado de inmediato.
+    """
+
+    # write_only: el token entra en el request pero nunca aparece en la respuesta
+    recaptcha_token = serializers.CharField(write_only=True, required=False)
+
     class Meta:
         model = User
         fields = [
-            'first_name', 
-            'last_name', 
-            'phone', 
-            'date_of_birth', 
-            'avatar_url'
+            "email",
+            "first_name",
+            "last_name",
+            "phone",
+            "role",
+            "recaptcha_token",
         ]
         extra_kwargs = {
-            'first_name': {'required': False, 'allow_blank': True},
-            'last_name': {'required': False, 'allow_blank': True},
-            'phone': {'required': False, 'allow_blank': True},
-            'date_of_birth': {'required': False, 'allow_null': True},
-            'avatar_url': {'required': False, 'allow_blank': True, 'allow_null': True},
+            "phone": {"required": False, "allow_blank": True},
+        }
+
+    def validate_role(self, value):
+        """Solo permite crear usuarios Director o Administrador desde este endpoint."""
+        if value not in [User.Role.DIRECTOR, User.Role.ADMIN]:
+            raise serializers.ValidationError(
+                "Este endpoint solo crea usuarios con rol Director o Administrador."
+            )
+        return value
+
+    def create(self, validated_data):
+        """
+        Crea el usuario con contraseña temporal y lo retorna junto a ella.
+
+        El caller (UserCreateView) es el responsable de entregar la
+        contraseña temporal al nuevo usuario — en BD solo se guarda el hash.
+        Retorna (user, temp_password) en lugar del user solo.
+        """
+        from .utils import generate_temp_password
+
+        validated_data.pop("recaptcha_token", None)
+        temp_password = generate_temp_password()
+
+        user = User.objects.create_user(
+            email=validated_data["email"],
+            password=temp_password,
+            first_name=validated_data.get("first_name", ""),
+            last_name=validated_data.get("last_name", ""),
+            phone=validated_data.get("phone", ""),
+            role=validated_data["role"],
+            is_verified=True,
+            is_active=True,
+        )
+        return user, temp_password
+
+
+class UpdateProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ["first_name", "last_name", "phone", "date_of_birth", "avatar_url"]
+        extra_kwargs = {
+            "first_name": {"required": False, "allow_blank": True},
+            "last_name": {"required": False, "allow_blank": True},
+            "phone": {"required": False, "allow_blank": True},
+            "date_of_birth": {"required": False, "allow_null": True},
+            "avatar_url": {"required": False, "allow_blank": True, "allow_null": True},
         }
