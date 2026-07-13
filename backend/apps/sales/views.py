@@ -8,22 +8,27 @@ generación de factura PDF con ReportLab.
 
 import io
 from datetime import datetime
+from decimal import Decimal
 
+from django.db.models import Prefetch
 from django.http import HttpResponse
 from django.utils import timezone
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import (Paragraph, SimpleDocTemplate, Spacer, Table,
+                                TableStyle)
 from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Compra
-from .serializers import CompraSerializer
+from apps.catalog.models import Coreografia
+
+from .models import Carrito, CarritoItem, Compra
+from .serializers import CarritoSerializer, CompraSerializer
 
 
 class CompraPagination(PageNumberPagination):
@@ -369,3 +374,267 @@ class FacturaPDFView(APIView):
         doc.build(elementos)
         buffer.seek(0)
         return buffer
+
+
+def _carrito_queryset():
+    """
+    Queryset base de Carrito con los items y sus coreografías precargados.
+
+    Se usa en todas las vistas de carrito para calcular subtotal/iva/total
+    sin disparar una query extra por cada item (N+1).
+    """
+    return Carrito.objects.prefetch_related(
+        Prefetch(
+            "items",
+            queryset=CarritoItem.objects.select_related(
+                "coreografia", "coreografia__genero"
+            ),
+        )
+    )
+
+
+def _carrito_vacio():
+    """
+    Estructura de respuesta cuando el cliente/sesión no tiene carrito aún.
+
+    Los totales se envían como string, igual que CarritoSerializer, para
+    mantener la precisión monetaria (evita que el renderer JSON los
+    convierta a float).
+    """
+    cero = str(Decimal("0.00"))
+    return {"items": [], "subtotal": cero, "iva_monto": cero, "total": cero}
+
+
+def _identidad_o_error(request):
+    """
+    Resuelve cómo identificar el carrito del request actual.
+
+    Prioriza el JWT: si `request.user` está autenticado, el carrito se
+    identifica por cliente. Si no, busca el header X-Session-ID para
+    carritos anónimos.
+
+    Retorna (True, {"cliente": user}) o (True, {"session_id": sid}) si
+    pudo resolver una identidad, o (False, Response(400)) si no hay JWT
+    ni header — la vista debe retornar esa respuesta tal cual.
+    """
+    if request.user and request.user.is_authenticated:
+        return True, {"cliente": request.user}
+
+    session_id = request.headers.get("X-Session-ID")
+    if session_id:
+        return True, {"session_id": session_id}
+
+    return False, Response(
+        {"error": "Se requiere autenticación o el header X-Session-ID."},
+        status=status.HTTP_400_BAD_REQUEST,
+    )
+
+
+def _buscar_carrito(identidad):
+    """Busca el carrito de la identidad dada sin crearlo si no existe."""
+    if "cliente" in identidad:
+        return _carrito_queryset().filter(cliente=identidad["cliente"]).first()
+    return (
+        _carrito_queryset()
+        .filter(session_id=identidad["session_id"], cliente=None)
+        .first()
+    )
+
+
+def _obtener_o_crear_carrito(identidad):
+    """Obtiene el carrito de la identidad dada, creándolo si no existe."""
+    if "cliente" in identidad:
+        carrito, _creado = Carrito.objects.get_or_create(cliente=identidad["cliente"])
+    else:
+        carrito, _creado = Carrito.objects.get_or_create(
+            session_id=identidad["session_id"], cliente=None
+        )
+    return carrito
+
+
+class CarritoDetailView(APIView):
+    """
+    GET /api/v1/carrito/
+
+    Retorna el carrito del cliente autenticado (JWT) o del carrito
+    anónimo identificado por el header X-Session-ID. No crea un carrito
+    nuevo si no existe: en ese caso retorna una estructura vacía con
+    los totales en 0, para no ensuciar la base de datos con carritos
+    que nunca llegaron a tener un item.
+    """
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        """Retorna el carrito con sus items y totales, o un carrito vacío."""
+        ok, identidad = _identidad_o_error(request)
+        if not ok:
+            return identidad
+
+        carrito = _buscar_carrito(identidad)
+        if carrito is None:
+            return Response(_carrito_vacio())
+
+        return Response(CarritoSerializer(carrito).data)
+
+
+class CarritoItemCreateView(APIView):
+    """
+    POST /api/v1/carrito/items/
+
+    Agrega una coreografía al carrito del cliente autenticado o de la
+    sesión anónima (X-Session-ID). Crea el carrito si todavía no existe.
+    """
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        """
+        Valida y agrega el ítem, devolviendo el carrito actualizado.
+
+        Retorna 400 si: falta coreografia_id, la coreografía no existe o
+        no está publicada, ya está en el carrito, o el cliente ya la compró.
+        """
+        coreografia_id = request.data.get("coreografia_id")
+        if not coreografia_id:
+            return Response(
+                {"error": "coreografia_id es requerido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            coreografia = Coreografia.objects.get(
+                pk=coreografia_id, estado=Coreografia.Estado.PUBLICADO
+            )
+        except (Coreografia.DoesNotExist, ValueError, TypeError):
+            return Response(
+                {"error": "La coreografía no existe o no está disponible."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ok, identidad = _identidad_o_error(request)
+        if not ok:
+            return identidad
+
+        # Solo un cliente autenticado puede tener historial de compras;
+        # una sesión anónima nunca "ya compró" nada.
+        if "cliente" in identidad:
+            ya_comprada = Compra.objects.filter(
+                cliente=identidad["cliente"], coreografia=coreografia
+            ).exists()
+            if ya_comprada:
+                return Response(
+                    {"error": "Ya compraste esta coreografía."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        carrito = _obtener_o_crear_carrito(identidad)
+
+        if CarritoItem.objects.filter(
+            carrito=carrito, coreografia=coreografia
+        ).exists():
+            return Response(
+                {"error": "Esta coreografía ya está en el carrito."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        CarritoItem.objects.create(carrito=carrito, coreografia=coreografia)
+
+        carrito = _carrito_queryset().get(pk=carrito.pk)
+        return Response(CarritoSerializer(carrito).data, status=status.HTTP_201_CREATED)
+
+
+class CarritoItemDeleteView(APIView):
+    """
+    DELETE /api/v1/carrito/items/{coreografia_id}/
+
+    Elimina una coreografía del carrito del cliente autenticado o de la
+    sesión anónima (X-Session-ID). No crea el carrito si no existe.
+    """
+
+    permission_classes = [AllowAny]
+
+    def delete(self, request, coreografia_id):
+        """Elimina el item; retorna 404 si el carrito o el item no existen."""
+        ok, identidad = _identidad_o_error(request)
+        if not ok:
+            return identidad
+
+        carrito = _buscar_carrito(identidad)
+        if carrito is None:
+            return Response(
+                {"error": "El carrito no existe."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        item = CarritoItem.objects.filter(
+            carrito=carrito, coreografia_id=coreografia_id
+        ).first()
+        if item is None:
+            return Response(
+                {"error": "Esa coreografía no está en el carrito."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        item.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class CarritoMergeView(APIView):
+    """
+    POST /api/v1/carrito/merge/
+
+    Se llama justo después de que un usuario anónimo inicia sesión, para
+    no perder los items que agregó al carrito antes de loguearse.
+
+    Mueve los items del carrito anónimo (identificado por session_id en
+    el body) al carrito del usuario autenticado, evitando duplicados y
+    coreografías que el usuario ya compró. Al final elimina el carrito
+    anónimo, ya que su contenido ya fue absorbido (o descartado).
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """Fusiona el carrito anónimo indicado con el del usuario autenticado."""
+        session_id = request.data.get("session_id")
+        if not session_id:
+            return Response(
+                {"error": "session_id es requerido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        carrito_anonimo = (
+            Carrito.objects.filter(session_id=session_id, cliente=None)
+            .prefetch_related("items")
+            .first()
+        )
+        carrito_usuario, _creado = Carrito.objects.get_or_create(cliente=request.user)
+
+        if carrito_anonimo is not None:
+            ids_en_carrito_usuario = set(
+                CarritoItem.objects.filter(carrito=carrito_usuario).values_list(
+                    "coreografia_id", flat=True
+                )
+            )
+            ids_ya_comprados = set(
+                Compra.objects.filter(cliente=request.user).values_list(
+                    "coreografia_id", flat=True
+                )
+            )
+
+            for item in carrito_anonimo.items.all():
+                if item.coreografia_id in ids_en_carrito_usuario:
+                    continue
+                if item.coreografia_id in ids_ya_comprados:
+                    continue
+                CarritoItem.objects.create(
+                    carrito=carrito_usuario, coreografia_id=item.coreografia_id
+                )
+                ids_en_carrito_usuario.add(item.coreografia_id)
+
+            # El carrito anónimo ya cumplió su propósito: sus items válidos
+            # se movieron y los inválidos (duplicados/comprados) se descartan.
+            carrito_anonimo.delete()
+
+        carrito_usuario = _carrito_queryset().get(pk=carrito_usuario.pk)
+        return Response(CarritoSerializer(carrito_usuario).data)
