@@ -12,6 +12,7 @@ import {
   Heart,
   Share2,
 } from "lucide-react";
+import { useCart } from "../context/CartContext";
 // Import genre videos directly and map to categories so the detail
 // page can play the correct video as the default media for a choreography.
 import balletVideo from "../assets/video/ballet.mp4";
@@ -43,6 +44,7 @@ import urbanVideo from "../assets/video/urban.mp4";
 const ChoreographyDetail = () => {
   const { id } = useParams();
   const item = choreographies.find((c) => String(c.id) === String(id));
+  const { agregarItem, isInCart } = useCart();
 
   // Simple mapping from choreography.category to the video file.
   const categoryToVideoKey = {
@@ -57,7 +59,8 @@ const ChoreographyDetail = () => {
     Salsac: salsacVideo,
   };
 
-  const defaultVideo = categoryToVideoKey[item.category] || null;
+  const defaultVideo = item ? categoryToVideoKey[item.category] || null : null;
+  const enCarrito = item ? isInCart(item.id) : false;
 
   const videoRef = useRef(null);
   const [isMuted, setIsMuted] = useState(true);
@@ -65,6 +68,12 @@ const ChoreographyDetail = () => {
   useEffect(() => {
     if (videoRef.current) videoRef.current.muted = isMuted;
   }, [isMuted]);
+
+  const handleAddToCart = () => {
+    if (item) {
+      agregarItem(item);
+    }
+  };
 
   if (!item)
     return (
@@ -222,9 +231,18 @@ const ChoreographyDetail = () => {
                   <ShoppingCart /> Comprar Ahora
                 </button>
 
-                <button className="flex w-full items-center justify-center gap-2 rounded-lg border border-border py-3 text-foreground transition-colors hover:bg-muted">
+                <button
+                  onClick={handleAddToCart}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-border py-3 text-foreground transition-colors hover:bg-muted"
+                >
                   <ShoppingCart /> Agregar al Carrito
                 </button>
+
+                {enCarrito ? (
+                  <p className="text-center text-sm text-purple-300">
+                    Esta coreografía ya está en tu carrito.
+                  </p>
+                ) : null}
 
                 <div className="flex gap-3 mt-2">
                   <button className="flex flex-1 items-center justify-center rounded-lg border border-border py-3 text-foreground transition-colors hover:bg-muted">

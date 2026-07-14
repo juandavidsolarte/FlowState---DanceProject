@@ -16,6 +16,10 @@ const CartDrawer = () => {
     subtotal,
     iva,
     total,
+    isLoading,
+    message,
+    error,
+    clearMessage,
     eliminarItem,
     limpiarCarrito,
     closeDrawer,
@@ -64,8 +68,29 @@ const CartDrawer = () => {
               </button>
             </div>
 
+            {(message || error) && !isLoading ? (
+              <div className="border-b border-purple-900/20 px-6 py-4">
+                <div className={`rounded-2xl px-4 py-3 text-sm ${error ? "border border-red-500/20 bg-red-500/10 text-red-200" : "border border-emerald-500/20 bg-emerald-500/10 text-emerald-100"}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <span>{error || message}</span>
+                    <button
+                      type="button"
+                      onClick={clearMessage}
+                      className="text-xs font-semibold uppercase tracking-[0.18em] text-white/70 transition hover:text-white"
+                    >
+                      Cerrar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
             <div className="flex-1 overflow-y-auto px-6 py-5">
-              {items.length > 0 ? (
+              {isLoading ? (
+                <div className="flex h-full min-h-[220px] items-center justify-center rounded-3xl border border-dashed border-purple-900/30 bg-[#0f0a1e] px-6 py-12 text-center text-gray-300">
+                  Cargando carrito...
+                </div>
+              ) : items.length > 0 ? (
                 <div className="space-y-4">
                   {items.map((item) => (
                     <div
