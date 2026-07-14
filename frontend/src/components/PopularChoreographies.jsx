@@ -59,7 +59,6 @@ const PopularChoreographies = () => {
                 category={item.category}
                 level={item.level}
                 title={item.title}
-                price={item.price}
                 rating={item.rating}
                 reviews={item.reviews}
                 duration={item.duration}
