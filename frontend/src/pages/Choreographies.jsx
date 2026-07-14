@@ -157,6 +157,7 @@ export default function Choreographies() {
                   key={choreo.id}
                   {...choreo}
                   img={choreo.img || salsaImg}
+                  to={`/catalogo/${choreo.id}`}
                 />
               ))}
             </div>

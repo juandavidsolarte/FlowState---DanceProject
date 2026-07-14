@@ -3,12 +3,15 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import api from "../services/api";
 import CaptchaField from "../components/auth/CaptchaField";
 import { getRecaptchaSiteKey } from "../config/recaptcha";
+import { useAuth } from "../context/AuthContext";
+import { notifyAuthChanged } from "../context/CartContext";
 
 const recaptchaSiteKey = getRecaptchaSiteKey();
 
 export default function VerifyEmail() {
   const { token } = useParams();
   const navigate = useNavigate();
+  const { setSession } = useAuth();
   const [status, setStatus] = useState("loading");
   const [message, setMessage] = useState("");
   const [email, setEmail] = useState("");
@@ -22,8 +25,8 @@ export default function VerifyEmail() {
       try {
         const response = await api.get(`/auth/verify-email/${token}/`, { withCredentials: true });
         const { access, user } = response.data;
-        localStorage.setItem("access_token", access);
-        localStorage.setItem("user", JSON.stringify(user));
+        setSession(access, user);
+        notifyAuthChanged();
         if (active) {
           setStatus("success");
           setMessage(response.data.message || "Cuenta verificada correctamente.");
@@ -42,7 +45,7 @@ export default function VerifyEmail() {
     return () => {
       active = false;
     };
-  }, [navigate, token]);
+  }, [navigate, setSession, token]);
 
   const resend = async (event) => {
     event.preventDefault();

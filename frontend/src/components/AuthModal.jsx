@@ -13,14 +13,10 @@ import { Dialog, Transition } from "@headlessui/react";
 // useNavigate → hook para redirigir al usuario por código (ej. tras login exitoso)
 import { Link, useNavigate } from "react-router-dom";
 
-// api → instancia de axios ya configurada con baseURL, headers y el interceptor
-//       que agrega automáticamente el Authorization: Bearer <token> en cada request.
-//       Está en services/api.js
-import api from "../services/api";
-
 // CaptchaField → componente que renderiza el widget de Google reCAPTCHA v2.
 //                Recibe la siteKey y llama a onChange cuando el usuario lo resuelve.
 import CaptchaField from "./auth/CaptchaField";
+import { useAuth } from "../context/AuthContext";
 
 // getRecaptchaSiteKey → lee VITE_RECAPTCHA_SITE_KEY del .env.
 //                       Si no existe, en desarrollo usa la test key de Google
@@ -47,6 +43,7 @@ const AuthModal = ({ isOpen, closeModal }) => {
   // useNavigate devuelve una función que cambia la URL sin recargar la página.
   // La usamos después del login para llevar al usuario a su pantalla correcta.
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   // ── Estados del formulario ────────────────────────────────────────────────
   // captchaToken  → string con el token que Google entrega cuando el usuario
@@ -100,43 +97,22 @@ const AuthModal = ({ isOpen, closeModal }) => {
       return; // salimos sin hacer la petición al servidor
     }
 
-    // ── Petición al backend ───────────────────────────────────────────────
+      // ── Petición al backend ───────────────────────────────────────────────
     setSubmitting(true); // bloquea el botón mientras esperamos respuesta
     try {
-      // POST /api/v1/auth/login/
-      // El backend (LoginView en views.py) espera: email, password, recaptcha_token.
-      // Si todo es correcto, responde con:
-      //   { access: "<JWT de 60min>", user: { id, email, role, full_name, ... } }
-      // Si la key del .env es la test key, el fallback "test-token" pasa la validación
-      // de Google porque la test key acepta cualquier token en desarrollo.
-      const response = await api.post("/auth/login/", {
-        email,
-        password,
-        recaptcha_token: captchaToken || "test-token",
-      });
-
-      // Extraemos los datos útiles de la respuesta:
-      //   access → JWT que incluimos en futuros requests (Authorization: Bearer)
-      //   user   → objeto con los datos del usuario, incluido su role
-      const { access, user } = response.data;
-
-      // Guardamos el access token en localStorage para que el interceptor de api.js
-      // lo adjunte automáticamente en todas las peticiones siguientes.
-      // (El refresh token viaja en cookie HttpOnly y el browser lo maneja solo)
-      localStorage.setItem("access_token", access);
+        const { user } = await login(email, password, captchaToken || "test-token");
 
       handleClose(); // cierra el modal y limpia estados antes de navegar
 
       // ── Redirección según rol ─────────────────────────────────────────
-      // El modelo User tiene 4 roles: director, admin, profesor, cliente.
-      // Los roles con acceso al panel de administración son director y admin.
-      // Cualquier otro rol (profesor, cliente) va a su perfil personal.
-      const adminRoles = ["director", "admin"];
-      if (adminRoles.includes(user.role)) {
-        navigate("/dashboard/admin");   // Panel de administración
-      } else {
-        navigate("/cliente/mi-perfil"); // Perfil del usuario normal
-      }
+        const adminRoles = ["director", "admin"];
+        if (adminRoles.includes(user.role)) {
+          navigate("/dashboard/admin");
+        } else if (user.role === "profesor") {
+          navigate("/dashboard/profesor");
+        } else {
+          navigate("/cliente/mi-perfil");
+        }
 
     } catch (err) {
       // ── Manejo de errores del servidor ────────────────────────────────
@@ -165,7 +141,15 @@ const AuthModal = ({ isOpen, closeModal }) => {
           // DRF devuelve arrays de strings por campo, tomamos solo el primero
           mapped[key] = Array.isArray(val) ? val[0] : val;
         });
-        setErrors(mapped);
+        const fallbackMessage =
+          mapped.form ||
+          mapped.error ||
+          mapped.non_field_errors ||
+          Object.values(mapped).find(Boolean);
+        setErrors({
+          ...mapped,
+          form: fallbackMessage || "No pudimos iniciar sesión. Intenta nuevamente.",
+        });
       } else {
         // Caso 3: error de red o desconocido
         setErrors({ form: "No pudimos iniciar sesión. Intenta nuevamente." });
