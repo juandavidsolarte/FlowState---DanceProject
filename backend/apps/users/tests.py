@@ -73,6 +73,19 @@ class RegistrationFlowTests(TestCase):
         mock_send.assert_not_called()
 
     @patch("apps.users.views.send_verification_email")
+    def test_missing_date_of_birth_fails(self, mock_send):
+        payload = {**self.payload}
+        del payload["date_of_birth"]
+        response = self.client.post(
+            reverse("users:register"),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("date_of_birth", response.json())
+        mock_send.assert_not_called()
+
+    @patch("apps.users.views.send_verification_email")
     def test_missing_captcha_fails(self, mock_send):
         payload = {**self.payload, "recaptcha_token": ""}
         response = self.client.post(
