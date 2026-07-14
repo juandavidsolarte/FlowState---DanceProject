@@ -152,4 +152,5 @@ export const loadCatalogItem = async (id) => {
 
   return catalogMockItems.find((item) => String(item.id) === String(id)) ?? null;
 };
+
 export { catalogGenres, catalogLevels, catalogMockItems };
