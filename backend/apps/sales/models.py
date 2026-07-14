@@ -63,6 +63,12 @@ class Compra(models.Model):
         verbose_name = "Compra"
         verbose_name_plural = "Compras"
         ordering = ["-fecha_compra"]
+        # Índices para acelerar las agregaciones del dashboard administrativo
+        # (SCRUM-29): filtros/agrupaciones por fecha y por coreografía.
+        indexes = [
+            models.Index(fields=["fecha_compra"]),
+            models.Index(fields=["coreografia"]),
+        ]
 
     def __str__(self):
         return f"Compra #{self.pk} — {self.cliente.email} → {self.coreografia.titulo}"
