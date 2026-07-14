@@ -8,70 +8,75 @@ import React, {
 } from "react";
 import api from "../services/api";
 
-const CART_SESSION_KEY = "flowstate_cart_session_id";
+const CART_STORAGE_KEY = "flowstate_cart_items";
 const AUTH_EVENT = "flowstate:auth-changed";
+const VAT_RATE = 0.19;
 
 const CartContext = createContext(null);
 
-const normalizeCartItem = (item) => ({
-  id: String(item.coreografia_id ?? item.id),
-  coreografiaId: Number(item.coreografia_id ?? item.id),
-  title: item.titulo || item.title || "Sin título",
-  price: Number(item.precio ?? item.price ?? 0),
-  thumbnail: item.thumbnail_url || item.thumbnail || item.img || "",
-  img: item.thumbnail_url || item.thumbnail || item.img || "",
-  category: item.genero || item.category || item.genre || "",
-  level: item.level || item.nivel || "",
+const formatCartItem = (item) => ({
+  id: String(item.id),
+  title: item.title || "Sin título",
+  price: Number(item.price ?? 0),
+  thumbnail: item.thumbnail || item.img || "",
+  img: item.img || item.thumbnail || "",
+  category: item.category || item.genre || "",
+  level: item.level || "",
   duration: item.duration || "",
   rating: item.rating ?? null,
 });
 
-const getStoredSessionId = () => {
+const getStoredItems = () => {
   if (typeof window === "undefined") {
-    return null;
+    return [];
   }
 
   try {
-    return window.localStorage.getItem(CART_SESSION_KEY);
+    const raw = window.localStorage.getItem(CART_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.map(formatCartItem).filter((item) => item.id);
   } catch (error) {
-    return null;
+    return [];
   }
 };
 
-const setStoredSessionId = (sessionId) => {
+const persistItems = (items) => {
   if (typeof window === "undefined") {
     return;
   }
 
   try {
-    if (sessionId) {
-      window.localStorage.setItem(CART_SESSION_KEY, sessionId);
-    } else {
-      window.localStorage.removeItem(CART_SESSION_KEY);
-    }
+    window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
   } catch (error) {
-    // Best effort.
+    // Persistence is best effort.
   }
 };
 
-const clearSessionId = () => setStoredSessionId(null);
+const dedupeById = (items) => {
+  const map = new Map();
 
-const ensureSessionId = () => {
-  if (typeof window === "undefined") {
-    return null;
-  }
+  items.forEach((item) => {
+    if (item?.id == null) {
+      return;
+    }
 
-  const existing = getStoredSessionId();
-  if (existing) {
-    return existing;
-  }
+    map.set(String(item.id), formatCartItem(item));
+  });
 
-  const sessionId = typeof crypto !== "undefined" && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return Array.from(map.values());
+};
 
-  setStoredSessionId(sessionId);
-  return sessionId;
+const calculateTotals = (items) => {
+  const subtotal = items.reduce((accumulator, item) => accumulator + Number(item.price || 0), 0);
+  const iva = subtotal * VAT_RATE;
+  const total = subtotal + iva;
+
+  return { subtotal, iva, total };
 };
 
 const isAuthenticated = () => {
@@ -82,237 +87,121 @@ const isAuthenticated = () => {
   return Boolean(window.localStorage.getItem("access_token"));
 };
 
-const extractCartPayload = (payload) => {
-  if (!payload) {
-    return { items: [], subtotal: 0, iva: 0, total: 0 };
+const loadServerCart = async () => {
+  try {
+    const response = await api.get("/cart/");
+    const serverItems = response.data?.items ?? response.data ?? [];
+
+    return Array.isArray(serverItems) ? serverItems.map(formatCartItem) : [];
+  } catch (error) {
+    return [];
   }
-
-  const rawItems = Array.isArray(payload.items) ? payload.items : [];
-
-  return {
-    items: rawItems.map(normalizeCartItem),
-    subtotal: Number(payload.subtotal ?? 0),
-    iva: Number(payload.iva_monto ?? 0),
-    total: Number(payload.total ?? 0),
-  };
 };
 
-const getCartHeaders = () => {
-  if (isAuthenticated()) {
-    return {};
+const saveServerCart = async (items) => {
+  try {
+    await api.post("/cart/merge/", {
+      items,
+    });
+  } catch (error) {
+    // The backend cart API may not be available yet.
   }
-
-  const sessionId = ensureSessionId();
-
-  return sessionId ? { "X-Session-ID": sessionId } : {};
-};
-
-const loadCartFromBackend = async () => {
-  const response = await api.get("/carrito/", {
-    headers: getCartHeaders(),
-  });
-
-  return extractCartPayload(response.data);
-};
-
-const mergeAnonymousCart = async () => {
-  const sessionId = getStoredSessionId();
-
-  if (!sessionId || !isAuthenticated()) {
-    return null;
-  }
-
-  const response = await api.post("/carrito/merge/", {
-    session_id: sessionId,
-  });
-
-  clearSessionId();
-  return extractCartPayload(response.data);
-};
-
-const saveSessionIdForAnonymous = () => {
-  ensureSessionId();
-};
-
-const mapCartError = (error) => {
-  const message = error.response?.data?.error || error.response?.data?.detail || error.message;
-
-  if (typeof message !== "string") {
-    return "No pudimos actualizar tu carrito.";
-  }
-
-  if (message.includes("ya está en el carrito")) {
-    return "Ya está en tu carrito";
-  }
-
-  if (message.includes("Ya compraste esta coreografía")) {
-    return "Ya compraste esta coreografía";
-  }
-
-  return message;
 };
 
 export const CartProvider = ({ children, onRequireAuth }) => {
-  const [items, setItems] = useState([]);
-  const [subtotal, setSubtotal] = useState(0);
-  const [iva, setIva] = useState(0);
-  const [total, setTotal] = useState(0);
+  const [items, setItems] = useState(() => dedupeById(getStoredItems()));
   const [drawerAbierto, setDrawerAbierto] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
 
-  const syncCart = useCallback(async () => {
-    setIsLoading(true);
-    setError("");
-    setMessage("");
+  useEffect(() => {
+    persistItems(items);
+  }, [items]);
 
-    try {
-      const authenticated = isAuthenticated();
+  useEffect(() => {
+    const handleAuthChange = async () => {
+      const localItems = dedupeById(getStoredItems());
 
-      if (authenticated) {
-        let merged = null;
-
-        try {
-          merged = await mergeAnonymousCart();
-        } catch (mergeError) {
-          merged = null;
-        }
-
-        const cartPayload = merged || (await loadCartFromBackend());
-
-        setItems(cartPayload.items);
-        setSubtotal(cartPayload.subtotal);
-        setIva(cartPayload.iva);
-        setTotal(cartPayload.total);
+      if (!isAuthenticated()) {
+        setItems(localItems);
         return;
       }
 
-      saveSessionIdForAnonymous();
-      const cartPayload = await loadCartFromBackend();
+      const serverItems = await loadServerCart();
+      const mergedItems = dedupeById([...serverItems, ...localItems]);
 
-      setItems(cartPayload.items);
-      setSubtotal(cartPayload.subtotal);
-      setIva(cartPayload.iva);
-      setTotal(cartPayload.total);
-    } catch (requestError) {
-      setError(mapCartError(requestError));
-      setItems([]);
-      setSubtotal(0);
-      setIva(0);
-      setTotal(0);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+      setItems(mergedItems);
+      persistItems(mergedItems);
 
-  useEffect(() => {
-    syncCart();
-  }, [syncCart]);
+      if (localItems.length > 0) {
+        setDrawerAbierto(true);
+      }
 
-  useEffect(() => {
-    const handleAuthChange = () => {
-      syncCart();
+      await saveServerCart(mergedItems);
+    };
+
+    const handleStorageChange = (event) => {
+      if (event.key === CART_STORAGE_KEY) {
+        setItems(dedupeById(getStoredItems()));
+      }
     };
 
     window.addEventListener(AUTH_EVENT, handleAuthChange);
+    window.addEventListener("storage", handleStorageChange);
 
     return () => {
       window.removeEventListener(AUTH_EVENT, handleAuthChange);
+      window.removeEventListener("storage", handleStorageChange);
     };
-  }, [syncCart]);
+  }, []);
 
-  const openDrawer = useCallback(() => {
-    setDrawerAbierto(true);
+  const agregarItem = useCallback(
+    (coreografia) => {
+      if (!coreografia?.id) {
+        return;
+      }
+
+      const nuevoItem = formatCartItem(coreografia);
+
+      setItems((currentItems) => {
+        if (currentItems.some((item) => String(item.id) === nuevoItem.id)) {
+          return currentItems;
+        }
+
+        return [...currentItems, nuevoItem];
+      });
+
+      if (isAuthenticated()) {
+        setDrawerAbierto(true);
+        return;
+      }
+
+      if (typeof onRequireAuth === "function") {
+        onRequireAuth();
+      }
+    },
+    [onRequireAuth],
+  );
+
+  const eliminarItem = useCallback((id) => {
+    const itemId = String(id);
+
+    setItems((currentItems) => currentItems.filter((item) => String(item.id) !== itemId));
+  }, []);
+
+  const limpiarCarrito = useCallback(() => {
+    setItems([]);
+  }, []);
+
+  const toggleDrawer = useCallback(() => {
+    setDrawerAbierto((current) => !current);
   }, []);
 
   const closeDrawer = useCallback(() => {
     setDrawerAbierto(false);
   }, []);
 
-  const clearMessage = useCallback(() => {
-    setMessage("");
-    setError("");
-  }, []);
-
-  const agregarItem = useCallback(
-    async (coreografiaOrId) => {
-      const coreografiaId = Number(
-        coreografiaOrId?.coreografiaId ??
-          coreografiaOrId?.coreografia_id ??
-          coreografiaOrId?.id ??
-          coreografiaOrId,
-      );
-
-      if (!coreografiaId) {
-        setError("No pudimos identificar la coreografía.");
-        openDrawer();
-        return;
-      }
-
-      clearMessage();
-
-      try {
-        const response = await api.post(
-          "/carrito/items/",
-          { coreografia_id: coreografiaId },
-          { headers: getCartHeaders() },
-        );
-
-        const cartPayload = extractCartPayload(response.data);
-        setItems(cartPayload.items);
-        setSubtotal(cartPayload.subtotal);
-        setIva(cartPayload.iva);
-        setTotal(cartPayload.total);
-        setMessage("Agregado al carrito");
-        setDrawerAbierto(true);
-      } catch (requestError) {
-        setError(mapCartError(requestError));
-        setDrawerAbierto(true);
-      }
-    },
-    [clearMessage, openDrawer],
-  );
-
-  const eliminarItem = useCallback(async (coreografiaId) => {
-    clearMessage();
-
-    try {
-      const response = await api.delete(`/carrito/items/${coreografiaId}/`, {
-        headers: getCartHeaders(),
-      });
-
-      if (response.status === 204) {
-        await syncCart();
-      }
-    } catch (requestError) {
-      setError(mapCartError(requestError));
-    }
-  }, [clearMessage, syncCart]);
-
-  const limpiarCarrito = useCallback(async () => {
-    clearMessage();
-
-    try {
-      await Promise.all(items.map((item) => api.delete(`/carrito/items/${item.coreografiaId}/`, {
-        headers: getCartHeaders(),
-      })));
-      await syncCart();
-    } catch (requestError) {
-      setError(mapCartError(requestError));
-    }
-  }, [clearMessage, items, syncCart]);
-
-  const toggleDrawer = useCallback(() => {
-    setDrawerAbierto((current) => !current);
-  }, []);
-
-  const isInCart = useCallback(
-    (id) => items.some((item) => String(item.coreografiaId) === String(id)),
-    [items],
-  );
-
   const value = useMemo(() => {
+    const { subtotal, iva, total } = calculateTotals(items);
+
     return {
       items,
       drawerAbierto,
@@ -320,38 +209,14 @@ export const CartProvider = ({ children, onRequireAuth }) => {
       iva,
       total,
       cantidadItems: items.length,
-      isLoading,
-      message,
-      error,
       agregarItem,
       eliminarItem,
       limpiarCarrito,
       toggleDrawer,
       closeDrawer,
-      openDrawer,
-      clearMessage,
-      isInCart,
-      refreshCart: syncCart,
+      isInCart: (id) => items.some((item) => String(item.id) === String(id)),
     };
-  }, [
-    agregarItem,
-    clearMessage,
-    closeDrawer,
-    drawerAbierto,
-    eliminarItem,
-    error,
-    isInCart,
-    isLoading,
-    items,
-    limpiarCarrito,
-    message,
-    openDrawer,
-    subtotal,
-    syncCart,
-    total,
-    toggleDrawer,
-    iva,
-  ]);
+  }, [agregarItem, closeDrawer, drawerAbierto, eliminarItem, items, limpiarCarrito, toggleDrawer]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 };
