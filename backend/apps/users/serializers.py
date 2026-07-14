@@ -9,8 +9,11 @@ Este módulo define los serializers para login, registro, actualización
 de perfil y cambio de contraseña.
 """
 
+from datetime import date
+
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
+from django.utils import timezone
 from rest_framework import serializers
 
 from .models import User
@@ -124,12 +127,33 @@ class RegisterSerializer(serializers.ModelSerializer):
             "first_name": {"required": True, "allow_blank": False},
             "last_name": {"required": True, "allow_blank": False},
             "role": {"required": False},
+            "date_of_birth": {"required": True},
         }
 
     def validate_role(self, value):
         if value not in [User.Role.CLIENTE, User.Role.PROFESOR]:
             raise serializers.ValidationError(
                 "El registro solo está permitido para clientes y profesores."
+            )
+        return value
+
+    def validate_date_of_birth(self, value):
+        """
+        Verifica que la persona sea mayor de edad (18 años o más).
+
+        El cálculo compara (mes, día) en vez de restar años directamente,
+        para que sea exacto incluso si el cumpleaños de este año todavía
+        no ha ocurrido (ej. alguien que cumple 18 la próxima semana no
+        puede registrarse hoy).
+        """
+        if value is None:
+            return value
+
+        hoy = date.today()
+        edad = hoy.year - value.year - ((hoy.month, hoy.day) < (value.month, value.day))
+        if edad < 18:
+            raise serializers.ValidationError(
+                "Debes ser mayor de edad (18 años) para registrarte."
             )
         return value
 
@@ -153,6 +177,9 @@ class RegisterSerializer(serializers.ModelSerializer):
         validated_data.pop("recaptcha_token", None)
         validated_data.pop("age_confirmation", None)
         validated_data.pop("terms_accepted", None)
+        # RegisterView.save(verification_token=...) lo agrega a validated_data;
+        # hay que extraerlo aquí para pasarlo al usuario en vez de perderlo.
+        verification_token = validated_data.pop("verification_token", None)
 
         user = User.objects.create_user(
             email=validated_data["email"],
@@ -163,6 +190,12 @@ class RegisterSerializer(serializers.ModelSerializer):
             date_of_birth=validated_data.get("date_of_birth"),
             country=validated_data.get("country", ""),
             role=validated_data.get("role", User.Role.CLIENTE),
+            # El usuario queda inactivo y sin verificar hasta que confirme
+            # su email con el token enviado por RegisterView.
+            is_active=False,
+            is_verified=False,
+            verification_token=verification_token,
+            verification_token_created_at=timezone.now(),
         )
 
         return user
